@@ -3,6 +3,21 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.1]
+
+### Fixed
+- Default Ubuntu MOTD scripts (`50-landscape-sysinfo`,
+  `88-esm-announce`, `90-updates-available`, etc.) were leaking
+  underneath our banner because the installer's hard-coded disable
+  list only covered six specific scripts. Replaced with a glob that
+  disables every existing script in `/etc/update-motd.d/` except
+  `01-smart-motd` itself, so this is future-proof against new Ubuntu
+  releases adding more scripts. Also clears executable bits from
+  `/etc/motd.d/*` (some releases route through there).
+- `motd-uninstall` now blanket-re-enables every script in
+  `/etc/update-motd.d/` and `/etc/motd.d/`, so removing smart-motd
+  cleanly restores the distro's original banner.
+
 ## [1.0.0]
 
 First stable release. No new features versus v0.5.1 — this tag just

@@ -242,24 +242,34 @@ EOF
         ok "Hook installed"
 
         if $DISABLE_DEFAULT_MOTD; then
+            # Disable EVERY existing script in /etc/update-motd.d/ except our
+            # own. Hard-coding a list of "known" Ubuntu defaults is fragile —
+            # new releases add scripts (50-landscape-sysinfo, 88-esm-announce,
+            # 90-updates-available, etc.) and those leak into the banner.
             disabled_count=0
-            for f in /etc/update-motd.d/10-help-text \
-                     /etc/update-motd.d/50-motd-news \
-                     /etc/update-motd.d/00-header \
-                     /etc/update-motd.d/80-livepatch \
-                     /etc/update-motd.d/91-release-upgrade \
-                     /etc/update-motd.d/97-overlayroot; do
+            for f in /etc/update-motd.d/*; do
+                [[ -e "$f" ]] || continue
+                [[ "$(basename "$f")" == "01-smart-motd" ]] && continue
                 if [[ -x "$f" ]]; then
-                    chmod -x "$f" || true
+                    chmod -x "$f" 2>/dev/null || true
                     disabled_count=$((disabled_count + 1))
                 fi
             done
             if (( disabled_count > 0 )); then
-                ok "Disabled ${disabled_count} default Ubuntu MOTD scripts"
+                ok "Disabled ${disabled_count} default Ubuntu MOTD script(s)"
             fi
         fi
-        # Truncate static /etc/motd so it's not duplicated.
+        # Truncate static /etc/motd so the second pam_motd line in
+        # /etc/pam.d/sshd doesn't add anything below our banner.
         : >/etc/motd 2>/dev/null || true
+        # Also nuke /etc/motd.d/ contents (some Ubuntu releases route through
+        # there): leave the directory but clear executable bits.
+        if [[ -d /etc/motd.d ]]; then
+            for f in /etc/motd.d/*; do
+                [[ -e "$f" ]] || continue
+                [[ -x "$f" ]] && chmod -x "$f" 2>/dev/null || true
+            done
+        fi
         ;;
     *)
         step "Wiring login banner via systemd timer (renders /etc/motd every 5 min)"

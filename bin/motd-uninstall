@@ -28,15 +28,19 @@ fi
 # update-motd.d hook
 rm -f /etc/update-motd.d/01-smart-motd
 
-# Restore the disabled default Ubuntu MOTD scripts (best-effort)
-for f in /etc/update-motd.d/10-help-text \
-         /etc/update-motd.d/50-motd-news \
-         /etc/update-motd.d/00-header \
-         /etc/update-motd.d/80-livepatch \
-         /etc/update-motd.d/91-release-upgrade \
-         /etc/update-motd.d/97-overlayroot; do
-    [[ -f "$f" ]] && chmod +x "$f" 2>/dev/null || true
-done
+# Restore every other script in /etc/update-motd.d/ — install.sh disables
+# them all (so distro defaults don't leak under our banner), uninstall
+# blanket-re-enables them.
+if [[ -d /etc/update-motd.d ]]; then
+    for f in /etc/update-motd.d/*; do
+        [[ -f "$f" ]] && chmod +x "$f" 2>/dev/null || true
+    done
+fi
+if [[ -d /etc/motd.d ]]; then
+    for f in /etc/motd.d/*; do
+        [[ -f "$f" ]] && chmod +x "$f" 2>/dev/null || true
+    done
+fi
 
 # cron entries
 if command -v crontab >/dev/null 2>&1; then
