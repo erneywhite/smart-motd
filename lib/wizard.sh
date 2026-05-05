@@ -71,7 +71,7 @@ _wiz_step_reset() {
 
 _wiz_cols() {
     local c
-    c=$(tput cols 2>/dev/tty 2>/dev/null) || c=80
+    c=$(tput cols 2>/dev/null) || c=80
     [[ "$c" -lt 40 ]] && c=80
     [[ "$c" -gt 110 ]] && c=110
     printf '%d' "$c"

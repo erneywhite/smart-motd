@@ -10,7 +10,7 @@ jobs:
     name: shellcheck + bash syntax
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install shellcheck
         run: sudo apt-get update -qq && sudo apt-get install -y -q shellcheck
@@ -53,7 +53,7 @@ jobs:
     name: render smoke test (Ubuntu)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install smart-motd from local source
         run: sudo bash install.sh --no-setup --source "$PWD"

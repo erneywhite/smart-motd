@@ -23,8 +23,11 @@ section_docker() {
         name="${row%%|*}"
         status="${row#*|}"
         case "$status" in
-            *healthy*)   color="${C_GREEN}" ;;
+            # Order matters: 'unhealthy' contains 'healthy' as a substring,
+            # so the unhealthy case must be checked FIRST or every unhealthy
+            # container would render green.
             *unhealthy*) color="${C_RED}" ;;
+            *healthy*)   color="${C_GREEN}" ;;
             Up*)         color="${C_GREEN}" ;;
             *)           color="${C_YELLOW}" ;;
         esac

@@ -561,7 +561,7 @@ configure_services_page() {
             unit="${unit%.service}"
             [[ -z "$unit" ]] && continue
             case "$unit" in
-                systemd-*|dbus|polkit*|snap.*|snapd*|udev*|user@*|getty@*|*\.scope|init.scope|systemd*|networkd-*|resolved*)
+                systemd*|dbus|polkit*|snap.*|snapd*|udev*|user@*|getty@*|*\.scope|networkd-*|resolved*)
                     continue ;;
                 *@.service|*@*) continue ;;
             esac

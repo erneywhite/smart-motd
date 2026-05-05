@@ -3,6 +3,25 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.0]
+
+First stable release. No new features versus v0.5.1 — this tag just
+marks the project as production-ready. The codebase has been smoke-
+tested end-to-end on Debian/Ubuntu in CI and battle-tested on a real
+production server through every iteration.
+
+### Fixed
+- `lib/sections/docker.sh` case order: `*healthy*` matched before
+  `*unhealthy*`, so unhealthy containers were rendered green. The
+  unhealthy case is now checked first.
+- `lib/wizard.sh` `_wiz_cols()` had two competing stderr redirects
+  (`2>/dev/tty 2>/dev/null`) — only the second one was effective.
+  Cleaned up to a single `2>/dev/null`.
+- `bin/motd-setup` services-page case had two patterns (`systemd-*`
+  and `systemd*`) where the second was dead code, plus `init.scope`
+  was masked by `*\.scope`. Pruned both.
+- CI uses `actions/checkout@v5` (v4 was deprecated by GitHub).
+
 ## [0.5.0]
 
 ### Added
