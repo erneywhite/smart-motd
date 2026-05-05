@@ -41,16 +41,90 @@ if [[ "$EUID" -ne 0 ]]; then
     exit 1
 fi
 
-C_BOLD=$'\033[1m'; C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'; C_RESET=$'\033[0m'
+# ---------- styling ----------
+# Force color when output is a terminal-ish destination. The pam_motd /
+# subprocess case isn't relevant here (we run interactively).
+if [[ -t 1 ]] || [[ -n "${FORCE_COLOR:-}" ]]; then
+    C_RESET=$'\033[0m'
+    C_BOLD=$'\033[1m'
+    C_DIM=$'\033[2m'
+    C_RED=$'\033[31m'
+    C_GREEN=$'\033[32m'
+    C_YELLOW=$'\033[33m'
+    C_BLUE=$'\033[34m'
+    C_MAGENTA=$'\033[35m'
+    C_CYAN=$'\033[36m'
+    C_GREY=$'\033[90m'
+    C_BRIGHT_GREEN=$'\033[92m'
+    C_BRIGHT_CYAN=$'\033[96m'
+else
+    C_RESET=""; C_BOLD=""; C_DIM=""; C_RED=""; C_GREEN=""
+    C_YELLOW=""; C_BLUE=""; C_MAGENTA=""; C_CYAN=""; C_GREY=""
+    C_BRIGHT_GREEN=""; C_BRIGHT_CYAN=""
+fi
 
-echo "${C_BOLD}smart-motd installer${C_RESET}"
+VERSION="$(cat 2>/dev/null <<'EOF'
+unknown
+EOF
+)"
+# We don't ship VERSION inside this script's heredoc; fetch from repo later.
 
-# ---- distro detect ----
-DISTRO_ID="unknown"; DISTRO_FAMILY="other"
+# ---------- visual helpers ----------
+
+step()  { printf '  %s▸%s %s\n' "${C_DIM}" "${C_RESET}" "$1"; }
+ok()    { printf '  %s✓%s %s\n' "${C_BRIGHT_GREEN}" "${C_RESET}" "$1"; }
+warn()  { printf '  %s!%s %s\n' "${C_YELLOW}" "${C_RESET}" "$1"; }
+err()   { printf '  %s✗%s %s\n' "${C_RED}" "${C_RESET}" "$1" >&2; }
+note()  { printf '    %s%s%s\n' "${C_DIM}" "$1" "${C_RESET}"; }
+
+print_banner() {
+    printf '\n'
+    printf '  %s╭───────────────────────────────────────────────────╮%s\n' "${C_CYAN}" "${C_RESET}"
+    printf '  %s│%s                                                   %s│%s\n' "${C_CYAN}" "${C_RESET}" "${C_CYAN}" "${C_RESET}"
+    printf '  %s│%s     %s★%s  %ssmart-motd%s  %s★%s    %scustomizable Linux MOTD%s    %s│%s\n' \
+        "${C_CYAN}" "${C_RESET}" \
+        "${C_BRIGHT_GREEN}" "${C_RESET}" \
+        "${C_BOLD}${C_BRIGHT_CYAN}" "${C_RESET}" \
+        "${C_BRIGHT_GREEN}" "${C_RESET}" \
+        "${C_DIM}" "${C_RESET}" \
+        "${C_CYAN}" "${C_RESET}"
+    printf '  %s│%s                                                   %s│%s\n' "${C_CYAN}" "${C_RESET}" "${C_CYAN}" "${C_RESET}"
+    printf '  %s│%s     %s%s%s     %s│%s\n' \
+        "${C_CYAN}" "${C_RESET}" \
+        "${C_DIM}" "https://github.com/${REPO}" "${C_RESET}" \
+        "${C_CYAN}" "${C_RESET}"
+    printf '  %s│%s                                                   %s│%s\n' "${C_CYAN}" "${C_RESET}" "${C_CYAN}" "${C_RESET}"
+    printf '  %s╰───────────────────────────────────────────────────╯%s\n' "${C_CYAN}" "${C_RESET}"
+    printf '\n'
+}
+
+print_summary() {
+    printf '\n'
+    printf '  %s%s installed successfully%s\n' "${C_BRIGHT_GREEN}${C_BOLD}" "✓ smart-motd" "${C_RESET}"
+    printf '\n'
+    printf '  %sLocations%s\n' "${C_BOLD}" "${C_RESET}"
+    printf '    runtime  %s%s%s\n' "${C_DIM}" "$PREFIX" "${C_RESET}"
+    printf '    config   %s%s/config.conf%s\n' "${C_DIM}" "$CONFIG_DIR" "${C_RESET}"
+    printf '    cache    %s%s%s\n' "${C_DIM}" "$CACHE_DIR" "${C_RESET}"
+    printf '    cli      %s%s/smart-motd%s\n' "${C_DIM}" "$BIN_DIR" "${C_RESET}"
+    printf '\n'
+    printf '  %sCommands%s\n' "${C_BOLD}" "${C_RESET}"
+    printf '    %ssmart-motd show%s             preview the MOTD\n' "${C_BRIGHT_CYAN}" "${C_RESET}"
+    printf '    %ssudo smart-motd setup%s       re-run the wizard\n' "${C_BRIGHT_CYAN}" "${C_RESET}"
+    printf '    %ssudo smart-motd update-cache%s force a cache refresh\n' "${C_BRIGHT_CYAN}" "${C_RESET}"
+    printf '    %ssudo smart-motd uninstall%s    remove smart-motd\n' "${C_BRIGHT_CYAN}" "${C_RESET}"
+    printf '\n'
+}
+
+print_banner
+
+# ---------- distro detect ----------
+DISTRO_ID="unknown"; DISTRO_VERSION=""; DISTRO_FAMILY="other"
 if [[ -r /etc/os-release ]]; then
     # shellcheck disable=SC1091
     . /etc/os-release
     DISTRO_ID="${ID:-unknown}"
+    DISTRO_VERSION="${VERSION_ID:-}"
     case " ${ID:-} ${ID_LIKE:-} " in
         *" debian "*|*" ubuntu "*) DISTRO_FAMILY="debian" ;;
         *" rhel "*|*" fedora "*|*" centos "*|*" rocky "*|*" almalinux "*|*" ol "*) DISTRO_FAMILY="rhel" ;;
@@ -59,40 +133,49 @@ if [[ -r /etc/os-release ]]; then
         *" alpine "*) DISTRO_FAMILY="alpine" ;;
     esac
 fi
-echo "  Detected: $DISTRO_ID (family: $DISTRO_FAMILY)"
+ok "Detected ${C_BOLD}${DISTRO_ID}${C_RESET} ${DISTRO_VERSION}${DISTRO_VERSION:+ }${C_DIM}(family: ${DISTRO_FAMILY})${C_RESET}"
 
-# ---- ensure deps ----
+# ---------- ensure deps ----------
 NEED=()
 command -v curl >/dev/null 2>&1 || NEED+=("curl")
 command -v tar  >/dev/null 2>&1 || NEED+=("tar")
 command -v awk  >/dev/null 2>&1 || NEED+=("gawk")
 if [[ ${#NEED[@]} -gt 0 ]]; then
-    echo "  Installing missing prerequisites: ${NEED[*]}"
+    step "Installing prerequisites: ${NEED[*]}"
     case "$DISTRO_FAMILY" in
-        debian) apt-get update -qq && apt-get install -y --no-install-recommends "${NEED[@]}" ;;
-        rhel)   (command -v dnf >/dev/null && dnf install -y "${NEED[@]}") || yum install -y "${NEED[@]}" ;;
-        suse)   zypper --non-interactive install "${NEED[@]}" ;;
-        arch)   pacman -Sy --noconfirm "${NEED[@]}" ;;
-        alpine) apk add --no-cache "${NEED[@]}" ;;
-        *) echo "  ${C_YELLOW}Cannot auto-install on this distro; please install manually: ${NEED[*]}${C_RESET}" ;;
+        debian) apt-get update -qq >/dev/null && apt-get install -y --no-install-recommends "${NEED[@]}" >/dev/null ;;
+        rhel)   (command -v dnf >/dev/null && dnf install -y -q "${NEED[@]}" >/dev/null) || yum install -y -q "${NEED[@]}" >/dev/null ;;
+        suse)   zypper --non-interactive --quiet install "${NEED[@]}" >/dev/null ;;
+        arch)   pacman -Sy --noconfirm --quiet "${NEED[@]}" >/dev/null ;;
+        alpine) apk add --no-cache --quiet "${NEED[@]}" >/dev/null ;;
+        *) warn "Cannot auto-install on this distro; please install manually: ${NEED[*]}" ;;
     esac
+    ok "Prerequisites installed"
+else
+    ok "Prerequisites already present (curl, tar, awk)"
 fi
 
-# ---- fetch source ----
+# ---------- fetch source ----------
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
 if [[ -n "$SOURCE_DIR" ]]; then
-    echo "  Using local source: $SOURCE_DIR"
+    step "Using local source: $SOURCE_DIR"
     cp -a "$SOURCE_DIR"/. "$WORK/"
+    ok "Source copied"
 else
     URL="https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz"
-    echo "  Fetching ${URL}"
+    step "Downloading smart-motd from GitHub (${BRANCH})"
     curl -fsSL "$URL" | tar -xz -C "$WORK" --strip-components=1
+    if [[ -r "$WORK/VERSION" ]]; then
+        ok "Downloaded smart-motd $(cat "$WORK/VERSION")"
+    else
+        ok "Downloaded smart-motd"
+    fi
 fi
 
-# ---- install files ----
-echo "  Installing to $PREFIX"
+# ---------- install files ----------
+step "Installing runtime to ${PREFIX}"
 mkdir -p "$PREFIX/lib" "$PREFIX/bin" "$PREFIX/lib/sections" "$CONFIG_DIR" "$CACHE_DIR" "$BIN_DIR"
 install -m 0755 "$WORK"/bin/motd-generate     "$PREFIX/bin/motd-generate"
 install -m 0755 "$WORK"/bin/motd-cache-update "$PREFIX/bin/motd-cache-update"
@@ -107,25 +190,31 @@ for f in "$WORK"/lib/sections/*.sh; do
 done
 [[ -f "$WORK/VERSION" ]] && install -m 0644 "$WORK/VERSION" "$PREFIX/VERSION"
 [[ -f "$WORK/config.example.conf" ]] && install -m 0644 "$WORK/config.example.conf" "$PREFIX/config.example.conf"
+ok "Installed binaries, libs, and section modules"
 
-# ---- example config if none ----
+# ---------- example config if none ----------
 if [[ ! -f "$CONFIG_DIR/config.conf" ]] && [[ -f "$WORK/config.example.conf" ]]; then
     cp "$WORK/config.example.conf" "$CONFIG_DIR/config.conf"
     chmod 0644 "$CONFIG_DIR/config.conf"
-    echo "  Wrote example config to $CONFIG_DIR/config.conf"
+    ok "Created default config at ${CONFIG_DIR}/config.conf"
+else
+    ok "Existing config kept at ${CONFIG_DIR}/config.conf"
 fi
 
-# ---- distro-specific MOTD hook ----
+# ---------- distro-specific MOTD hook ----------
 case "$DISTRO_FAMILY" in
     debian)
-        echo "  Wiring MOTD via /etc/update-motd.d/01-smart-motd"
+        step "Wiring login banner via /etc/update-motd.d/01-smart-motd"
         cat >/etc/update-motd.d/01-smart-motd <<'EOF'
 #!/usr/bin/env bash
 # pam_motd captures stdout, which makes [[ -t 1 ]] false; force-enable colors.
 SMART_MOTD_FORCE_COLOR=1 exec /usr/local/lib/smart-motd/bin/motd-generate
 EOF
         chmod +x /etc/update-motd.d/01-smart-motd
+        ok "Hook installed"
+
         if $DISABLE_DEFAULT_MOTD; then
+            disabled_count=0
             for f in /etc/update-motd.d/10-help-text \
                      /etc/update-motd.d/50-motd-news \
                      /etc/update-motd.d/00-header \
@@ -134,55 +223,60 @@ EOF
                      /etc/update-motd.d/97-overlayroot; do
                 if [[ -x "$f" ]]; then
                     chmod -x "$f" || true
+                    disabled_count=$((disabled_count + 1))
                 fi
             done
+            if (( disabled_count > 0 )); then
+                ok "Disabled ${disabled_count} default Ubuntu MOTD scripts"
+            fi
         fi
         # Truncate static /etc/motd so it's not duplicated.
         : >/etc/motd 2>/dev/null || true
         ;;
     *)
-        echo "  Wiring MOTD via systemd timer (writes /etc/motd every 5 minutes)"
+        step "Wiring login banner via systemd timer (renders /etc/motd every 5 min)"
         if command -v systemctl >/dev/null 2>&1 && [[ -d /etc/systemd/system ]]; then
             install -m 0644 "$WORK"/systemd/smart-motd-render.service /etc/systemd/system/smart-motd-render.service
             install -m 0644 "$WORK"/systemd/smart-motd-render.timer   /etc/systemd/system/smart-motd-render.timer
             systemctl daemon-reload
-            systemctl enable --now smart-motd-render.timer
-            # Render once immediately.
+            systemctl enable --now smart-motd-render.timer >/dev/null 2>&1
             SMART_MOTD_FORCE_COLOR=1 "$PREFIX/bin/motd-generate" >/etc/motd 2>/dev/null || true
+            ok "systemd render timer enabled"
         else
-            # Fallback: cron @5min
             if command -v crontab >/dev/null 2>&1; then
                 ( crontab -l 2>/dev/null | grep -v 'smart-motd' ; \
                   echo "*/5 * * * * SMART_MOTD_FORCE_COLOR=1 /usr/local/lib/smart-motd/bin/motd-generate >/etc/motd 2>/dev/null" ) | crontab -
             fi
             SMART_MOTD_FORCE_COLOR=1 "$PREFIX/bin/motd-generate" >/etc/motd 2>/dev/null || true
+            ok "cron render entry added (no systemd detected)"
         fi
         ;;
 esac
 
-# ---- systemd cache timer (all distros that have systemd) ----
+# ---------- systemd cache timer (refreshes heavy data every 5 min) ----------
 if command -v systemctl >/dev/null 2>&1 && [[ -d /etc/systemd/system ]]; then
+    step "Enabling cache refresh timer (every 5 min)"
     install -m 0644 "$WORK"/systemd/smart-motd-cache.service /etc/systemd/system/smart-motd-cache.service
     install -m 0644 "$WORK"/systemd/smart-motd-cache.timer   /etc/systemd/system/smart-motd-cache.timer
     systemctl daemon-reload
-    systemctl enable --now smart-motd-cache.timer
+    systemctl enable --now smart-motd-cache.timer >/dev/null 2>&1
+    ok "smart-motd-cache.timer enabled"
 elif command -v crontab >/dev/null 2>&1; then
+    step "Adding cache refresh cron entry (every 5 min)"
     ( crontab -l 2>/dev/null | grep -v 'motd-cache-update' ; \
       echo "*/5 * * * * /usr/local/lib/smart-motd/bin/motd-cache-update >/dev/null 2>&1" ) | crontab -
+    ok "cron entry added"
 fi
 
-# ---- run setup wizard ----
-echo
-echo "${C_GREEN}smart-motd installed.${C_RESET}"
+print_summary
 
-# When invoked via `curl ... | sudo bash`, stdin is the curl pipe, not a tty.
-# Re-open /dev/tty for the interactive setup wizard.
+# ---------- run setup wizard ----------
+
 if $RUN_SETUP && [[ -r /dev/tty && -w /dev/tty ]]; then
-    echo "Running interactive setup…"
+    printf '  %sLaunching interactive setup…%s\n\n' "${C_BOLD}" "${C_RESET}"
     sleep 1
     "$PREFIX/bin/motd-setup" </dev/tty
 else
-    echo "${C_YELLOW}Non-interactive install: skipping setup wizard.${C_RESET}"
-    echo "  Run it manually with:  sudo smart-motd setup"
-    echo "  Preview with:          smart-motd show"
+    printf '  %s!%s Non-interactive install: setup wizard skipped.\n' "${C_YELLOW}" "${C_RESET}"
+    printf '    Run it manually with: %ssudo smart-motd setup%s\n' "${C_BRIGHT_CYAN}" "${C_RESET}"
 fi

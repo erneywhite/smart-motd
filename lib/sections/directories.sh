@@ -15,7 +15,9 @@ section_directories() {
         (( ${#short} > 22 )) && short="${short:0:21}…"
         local color="${C_RESET}"
         [[ "$size" == "missing" ]] && color="${C_RED}"
-        printf "   %-22s %s%s%s  %s%s%s\n" \
+        # Right-pad size to 7 chars so paths line up regardless of size
+        # length ("4.0K" vs "32K" vs "1.2G" used to shift the path column).
+        printf "   %-22s %s%-7s%s %s%s%s\n" \
             "$short" \
             "$color" "$size" "${C_RESET}" \
             "${C_DIM}" "$path" "${C_RESET}"

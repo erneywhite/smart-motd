@@ -73,6 +73,37 @@ _wiz_cols() {
     printf '%d' "$c"
 }
 
+# Total terminal lines (defaults to 24 when tput fails).
+_wiz_lines() {
+    local n
+    n=$(tput lines 2>/dev/null) || n=24
+    [[ "$n" -lt 10 ]] && n=24
+    printf '%d' "$n"
+}
+
+# Compute the viewport size for a select/multiselect option list, given the
+# wrapped help text we're about to render. Reserves rough room for the
+# header bar, title, footer and 'more above/below' indicators. Caller can
+# pass extra reserved lines (e.g. for select_preview's preview area).
+_wiz_viewport_size() {
+    local help="$1" extra_reserved="${2:-0}"
+    local cols help_lines screen total
+    cols=$(_wiz_cols)
+    screen=$(_wiz_lines)
+    if [[ -n "$help" ]]; then
+        help_lines=$(_wrap "$help" $((cols - 4)) | wc -l | tr -d ' ')
+    else
+        help_lines=0
+    fi
+    # chrome: title bar (1) + blank (1) + question title (1) + blank (1)
+    #         + help_lines + blank (1) + footer prefix (1) + footer (1)
+    #         + 2-line slack for "↑ N more" / "↓ N more" hints
+    local chrome=$((1 + 1 + 1 + 1 + help_lines + 1 + 1 + 1 + 2 + extra_reserved))
+    total=$((screen - chrome))
+    (( total < 3 )) && total=3
+    printf '%d' "$total"
+}
+
 _wiz_show_cursor() { printf '\e[?25h' >/dev/tty 2>/dev/null || true; }
 _wiz_hide_cursor() { printf '\e[?25l' >/dev/tty 2>/dev/null || true; }
 
@@ -313,15 +344,29 @@ wizard_select() {
     (( sel < 0 || sel >= n )) && sel=0
 
     _wiz_hide_cursor
-    local key seq i cols max_label label
+    local key seq i cols max_label label viewport_size viewport_top viewport_end
+    viewport_top=0
     while true; do
         _wiz_header "$title"
         _wiz_help "$help"
         cols=$(_wiz_cols)
-        max_label=$(( cols - 6 ))  # account for "  ❯ " prefix + 1 char margin
+        max_label=$(( cols - 6 ))
         (( max_label < 10 )) && max_label=10
+        viewport_size=$(_wiz_viewport_size "$help")
 
-        for i in "${!options[@]}"; do
+        # Keep selected item visible by sliding the viewport.
+        if (( sel < viewport_top )); then
+            viewport_top=$sel
+        elif (( sel >= viewport_top + viewport_size )); then
+            viewport_top=$((sel - viewport_size + 1))
+        fi
+        viewport_end=$((viewport_top + viewport_size))
+        (( viewport_end > n )) && viewport_end=$n
+
+        if (( viewport_top > 0 )); then
+            _p "  \e[2m↑ $viewport_top more above\e[0m\n"
+        fi
+        for ((i = viewport_top; i < viewport_end; i++)); do
             label=$(_truncate "${options[i]}" "$max_label")
             if (( i == sel )); then
                 _p "  \e[1;36m❯ ${label}\e[0m\n"
@@ -329,6 +374,9 @@ wizard_select() {
                 _p "    ${label}\n"
             fi
         done
+        if (( viewport_end < n )); then
+            _p "  \e[2m↓ $((n - viewport_end)) more below\e[0m\n"
+        fi
         _wiz_footer "↑/↓ navigate · 1-9 jump · Enter to confirm"
 
         _wiz_clear_tail
@@ -369,15 +417,31 @@ wizard_select_preview() {
     (( sel < 0 || sel >= n )) && sel=0
 
     _wiz_hide_cursor
-    local key seq i cols max_label label
+    local key seq i cols max_label label viewport_size viewport_top viewport_end
+    # The preview area below the option list eats roughly 8 lines (theme
+    # preview is the tallest at ~7 lines including its own headings/rules).
+    local preview_reserved=10
+    viewport_top=0
     while true; do
         _wiz_header "$title"
         _wiz_help "$help"
         cols=$(_wiz_cols)
         max_label=$(( cols - 6 ))
         (( max_label < 10 )) && max_label=10
+        viewport_size=$(_wiz_viewport_size "$help" "$preview_reserved")
 
-        for i in "${!options[@]}"; do
+        if (( sel < viewport_top )); then
+            viewport_top=$sel
+        elif (( sel >= viewport_top + viewport_size )); then
+            viewport_top=$((sel - viewport_size + 1))
+        fi
+        viewport_end=$((viewport_top + viewport_size))
+        (( viewport_end > n )) && viewport_end=$n
+
+        if (( viewport_top > 0 )); then
+            _p "  \e[2m↑ $viewport_top more above\e[0m\n"
+        fi
+        for ((i = viewport_top; i < viewport_end; i++)); do
             label=$(_truncate "${options[i]}" "$max_label")
             if (( i == sel )); then
                 _p "  \e[1;36m❯ ${label}\e[0m\n"
@@ -385,6 +449,9 @@ wizard_select_preview() {
                 _p "    ${label}\n"
             fi
         done
+        if (( viewport_end < n )); then
+            _p "  \e[2m↓ $((n - viewport_end)) more below\e[0m\n"
+        fi
 
         _p "\n  \e[2m── Preview ──\e[0m\n"
         local pline
@@ -438,15 +505,28 @@ wizard_multiselect() {
     done
 
     _wiz_hide_cursor
-    local key seq cols max_label label mark
+    local key seq cols max_label label mark viewport_size viewport_top viewport_end
+    viewport_top=0
     while true; do
         _wiz_header "$title"
         _wiz_help "$help"
         cols=$(_wiz_cols)
-        max_label=$(( cols - 10 ))  # "  ❯ [✓] " prefix
+        max_label=$(( cols - 10 ))
         (( max_label < 10 )) && max_label=10
+        viewport_size=$(_wiz_viewport_size "$help")
 
-        for i in "${!options[@]}"; do
+        if (( sel < viewport_top )); then
+            viewport_top=$sel
+        elif (( sel >= viewport_top + viewport_size )); then
+            viewport_top=$((sel - viewport_size + 1))
+        fi
+        viewport_end=$((viewport_top + viewport_size))
+        (( viewport_end > n )) && viewport_end=$n
+
+        if (( viewport_top > 0 )); then
+            _p "  \e[2m↑ $viewport_top more above\e[0m\n"
+        fi
+        for ((i = viewport_top; i < viewport_end; i++)); do
             mark="\e[2m[ ]\e[0m"
             [[ "${checked[i]}" == "1" ]] && mark="\e[1;32m[✓]\e[0m"
             label=$(_truncate "${options[i]}" "$max_label")
@@ -456,6 +536,9 @@ wizard_multiselect() {
                 _p "    ${mark} ${label}\n"
             fi
         done
+        if (( viewport_end < n )); then
+            _p "  \e[2m↓ $((n - viewport_end)) more below\e[0m\n"
+        fi
         _wiz_footer "↑/↓ move · Space toggle · a all · n none · Enter confirm"
 
         _wiz_clear_tail
