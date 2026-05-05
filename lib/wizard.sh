@@ -100,9 +100,13 @@ _wiz_viewport_size() {
         help_lines=0
     fi
     # chrome: title bar (1) + blank (1) + question title (1) + blank (1)
-    #         + help_lines + blank (1) + footer prefix (1) + footer (1)
-    #         + 2-line slack for "↑ N more" / "↓ N more" hints
-    local chrome=$((1 + 1 + 1 + 1 + help_lines + 1 + 1 + 1 + 2 + extra_reserved))
+    #         + help_lines + blank-after-help (1)
+    #         + 2 lines for "↑ N more above" / "↓ N more below" hints
+    #         + footer-blank (1) + footer (1)
+    #         + 2-line bottom safety margin so the trailing newline from
+    #           the footer never pushes the title bar off the top of the
+    #           screen on terminals where `tput lines` is exactly snug.
+    local chrome=$((4 + help_lines + 1 + 2 + 2 + 2 + extra_reserved))
     total=$((screen - chrome))
     (( total < 3 )) && total=3
     printf '%d' "$total"
