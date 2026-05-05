@@ -3,6 +3,19 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.1]
+
+### Fixed
+- Network section never showed internal interface IPs when
+  `NETWORK_INTERFACES` was empty (the default for "All interfaces"
+  mode). Root cause: `("${arr[@]:-}")` for an empty source array
+  expands to a single empty-string element — NOT an empty array —
+  so the filter loop matched nothing and silently hid every
+  interface. Latent bug since v0.1.0; only became visible with the
+  v1.1.0 wizard prompt that introduced "All interfaces (auto)" as
+  a deliberate choice. Fixed by guarding with
+  `[[ ${#arr[@]} -gt 0 ]]` before populating the filter.
+
 ## [1.1.0]
 
 ### Added

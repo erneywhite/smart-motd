@@ -34,7 +34,14 @@ section_network() {
     if [[ "$show_iface" == "true" ]]; then
         # Filter: empty array = show every interface (except loopback).
         # Populated array = show only those interfaces.
-        local iface_filter=("${NETWORK_INTERFACES[@]:-}")
+        # IMPORTANT: don't use `("${NETWORK_INTERFACES[@]:-}")` — for an empty
+        # source array that expands to a single empty-string element, not
+        # an empty array, and the filter loop then matches nothing and
+        # silently hides every interface.
+        local iface_filter=()
+        if [[ ${#NETWORK_INTERFACES[@]} -gt 0 ]]; then
+            iface_filter=("${NETWORK_INTERFACES[@]}")
+        fi
         local entry iface ip
         while IFS= read -r entry; do
             [[ -z "$entry" ]] && continue
