@@ -64,37 +64,166 @@ detect_distro() {
     export DISTRO_ID DISTRO_FAMILY
 }
 
+# ---------- theme presets ----------
+# THEME applies to the rule characters and section heading style.
+# Set THEME=custom to override the individual THEME_* variables manually.
+
+apply_theme() {
+    local name="${THEME:-classic}"
+    case "$name" in
+        classic)
+            THEME_BANNER_CHAR='='
+            THEME_DIVIDER_CHAR='-'
+            THEME_KV_SEPARATOR=':'
+            THEME_HEADING_STYLE='centered'
+            ;;
+        slim)
+            THEME_BANNER_CHAR='─'
+            THEME_DIVIDER_CHAR='─'
+            THEME_KV_SEPARATOR=':'
+            THEME_HEADING_STYLE='centered'
+            ;;
+        heavy)
+            THEME_BANNER_CHAR='━'
+            THEME_DIVIDER_CHAR='━'
+            THEME_KV_SEPARATOR='▸'
+            THEME_HEADING_STYLE='bracketed'
+            ;;
+        double)
+            THEME_BANNER_CHAR='═'
+            THEME_DIVIDER_CHAR='═'
+            THEME_KV_SEPARATOR=':'
+            THEME_HEADING_STYLE='centered'
+            ;;
+        dotted)
+            THEME_BANNER_CHAR='┄'
+            THEME_DIVIDER_CHAR='┄'
+            THEME_KV_SEPARATOR='▸'
+            THEME_HEADING_STYLE='left'
+            ;;
+        ascii)
+            THEME_BANNER_CHAR='#'
+            THEME_DIVIDER_CHAR='-'
+            THEME_KV_SEPARATOR=':'
+            THEME_HEADING_STYLE='left'
+            ;;
+        custom)
+            : "${THEME_BANNER_CHAR:==}"
+            : "${THEME_DIVIDER_CHAR:=-}"
+            : "${THEME_KV_SEPARATOR:=:}"
+            : "${THEME_HEADING_STYLE:=centered}"
+            ;;
+        *)
+            THEME_BANNER_CHAR='='
+            THEME_DIVIDER_CHAR='-'
+            THEME_KV_SEPARATOR=':'
+            THEME_HEADING_STYLE='centered'
+            ;;
+    esac
+    : "${THEME_BANNER_WIDTH:=64}"
+    : "${THEME_DIVIDER_WIDTH:=55}"
+    : "${THEME_HEADING_COLOR:=cyan}"
+}
+
+# COLOR_THEME swaps the accent palette used by section headings & status colors.
+apply_color_theme() {
+    local name="${COLOR_THEME:-default}"
+    case "$name" in
+        default)  THEME_ACCENT="$C_CYAN" ;;
+        ocean)    THEME_ACCENT="$C_BLUE" ;;
+        forest)   THEME_ACCENT="$C_GREEN" ;;
+        sunset)   THEME_ACCENT="$C_MAGENTA" ;;
+        amber)    THEME_ACCENT="$C_YELLOW" ;;
+        mono)     THEME_ACCENT="$C_BOLD" ;;
+        *)        THEME_ACCENT="$C_CYAN" ;;
+    esac
+}
+
+apply_theme
+apply_color_theme
+
 # ---------- formatting helpers ----------
 
-# Print a section heading with rule lines.
+# Print a section heading with rule lines, respecting the active theme.
 # Usage: section_heading "Title"
 section_heading() {
     local title="$1"
-    local total=55
-    local title_padded=" ${title} "
-    local pad=$(( (total - ${#title_padded}) / 2 ))
-    (( pad < 1 )) && pad=1
-    local left right
-    left=$(printf '%*s' "$pad" '' | tr ' ' '-')
-    right=$(printf '%*s' $((total - pad - ${#title_padded})) '' | tr ' ' '-')
-    printf "%s%s%s%s%s\n" "${C_GREY}" "$left" "${C_BOLD}${title_padded}${C_RESET}${C_GREY}" "$right" "${C_RESET}"
+    local total="${THEME_DIVIDER_WIDTH:-55}"
+    local ch="${THEME_DIVIDER_CHAR:--}"
+    local style="${THEME_HEADING_STYLE:-centered}"
+    local accent="${THEME_ACCENT:-${C_CYAN}}"
+
+    case "$style" in
+        left)
+            # ─── Title ─────
+            local prefix
+            prefix=$(_repeat_char "$ch" 3)
+            local rest=$(( total - ${#title} - 5 ))
+            (( rest < 1 )) && rest=1
+            local tail
+            tail=$(_repeat_char "$ch" "$rest")
+            printf "%s%s %s%s%s %s%s\n" \
+                "${C_GREY}" "$prefix" \
+                "${C_BOLD}${accent}" "$title" "${C_RESET}${C_GREY}" \
+                "$tail" "${C_RESET}"
+            ;;
+        bracketed)
+            # ━━━━━[ Title ]━━━━━
+            local title_padded="[ ${title} ]"
+            local pad=$(( (total - ${#title_padded}) / 2 ))
+            (( pad < 1 )) && pad=1
+            local left right
+            left=$(_repeat_char "$ch" "$pad")
+            right=$(_repeat_char "$ch" $((total - pad - ${#title_padded})))
+            printf "%s%s%s%s%s%s%s\n" \
+                "${C_GREY}" "$left" \
+                "${C_BOLD}${accent}" "$title_padded" "${C_RESET}${C_GREY}" \
+                "$right" "${C_RESET}"
+            ;;
+        *)  # centered (default)
+            local title_padded=" ${title} "
+            local pad=$(( (total - ${#title_padded}) / 2 ))
+            (( pad < 1 )) && pad=1
+            local left right
+            left=$(_repeat_char "$ch" "$pad")
+            right=$(_repeat_char "$ch" $((total - pad - ${#title_padded})))
+            printf "%s%s%s%s%s%s%s\n" \
+                "${C_GREY}" "$left" \
+                "${C_BOLD}${accent}" "$title_padded" "${C_RESET}${C_GREY}" \
+                "$right" "${C_RESET}"
+            ;;
+    esac
 }
 
-# Print a plain rule line.
+# Plain rule line, themed.
 section_rule() {
-    printf "%s%s%s\n" "${C_GREY}" "$(printf '%*s' 55 '' | tr ' ' '-')" "${C_RESET}"
+    local total="${THEME_DIVIDER_WIDTH:-55}"
+    local ch="${THEME_DIVIDER_CHAR:--}"
+    printf "%s%s%s\n" "${C_GREY}" "$(_repeat_char "$ch" "$total")" "${C_RESET}"
 }
 
-# Heavy double-rule used after the header.
+# Heavy rule used after the header banner.
 section_thick_rule() {
-    printf "%s%s%s\n" "${C_GREY}" "$(printf '%*s' 64 '' | tr ' ' '=')" "${C_RESET}"
+    local total="${THEME_BANNER_WIDTH:-64}"
+    local ch="${THEME_BANNER_CHAR:==}"
+    printf "%s%s%s\n" "${C_GREY}" "$(_repeat_char "$ch" "$total")" "${C_RESET}"
 }
 
 # Print a labeled line: "  Label   : value"
-# Usage: kv "Label" "value" [color]
 kv() {
     local label="$1" value="$2" color="${3:-}"
-    printf " %-9s: %s%s%s\n" "$label" "$color" "$value" "${C_RESET:-}"
+    local sep="${THEME_KV_SEPARATOR:-:}"
+    printf " %-9s%s %s%s%s\n" "$label" "$sep" "$color" "$value" "${C_RESET:-}"
+}
+
+# Internal: repeat a single character N times. Handles multi-byte UTF-8 chars
+# (─, ═, ━, ┄) by avoiding `tr` (which counts bytes, not characters).
+_repeat_char() {
+    local ch="$1" n="$2" out="" i
+    for ((i = 0; i < n; i++)); do
+        out+="$ch"
+    done
+    printf '%s' "$out"
 }
 
 # Right-pad a string with spaces between characters: "abc" -> "a b c"

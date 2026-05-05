@@ -25,6 +25,8 @@ LASTLOGIN_COUNT=3
 WEATHER_CITY=""
 FOOTER_TEXT=""
 COLORS_ENABLED=true
+THEME=classic
+COLOR_THEME=default
 
 # Section toggles
 HEADER_ENABLED=true
@@ -65,6 +67,8 @@ fi
 
 # shellcheck source=../lib/common.sh
 . "${SMART_MOTD_PREFIX}/lib/common.sh"
+apply_theme
+apply_color_theme
 detect_distro
 
 # Source every section module.

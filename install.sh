@@ -101,6 +101,7 @@ install -m 0755 "$WORK"/bin/motd-uninstall    "$PREFIX/bin/motd-uninstall"
 install -m 0755 "$WORK"/bin/smart-motd        "$BIN_DIR/smart-motd"
 install -m 0644 "$WORK"/lib/common.sh         "$PREFIX/lib/common.sh"
 install -m 0644 "$WORK"/lib/cache.sh          "$PREFIX/lib/cache.sh"
+install -m 0644 "$WORK"/lib/wizard.sh         "$PREFIX/lib/wizard.sh"
 for f in "$WORK"/lib/sections/*.sh; do
     install -m 0644 "$f" "$PREFIX/lib/sections/$(basename "$f")"
 done
@@ -172,10 +173,15 @@ fi
 # ---- run setup wizard ----
 echo
 echo "${C_GREEN}smart-motd installed.${C_RESET}"
-if $RUN_SETUP && [[ -t 0 ]]; then
+
+# When invoked via `curl ... | sudo bash`, stdin is the curl pipe, not a tty.
+# Re-open /dev/tty for the interactive setup wizard.
+if $RUN_SETUP && [[ -r /dev/tty && -w /dev/tty ]]; then
     echo "Running interactive setup…"
-    "$PREFIX/bin/motd-setup"
+    sleep 1
+    "$PREFIX/bin/motd-setup" </dev/tty
 else
-    echo "Skipped setup. Run it manually with:  sudo smart-motd setup"
-    echo "Preview with:                          smart-motd show"
+    echo "${C_YELLOW}Non-interactive install: skipping setup wizard.${C_RESET}"
+    echo "  Run it manually with:  sudo smart-motd setup"
+    echo "  Preview with:          smart-motd show"
 fi

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# smart-motd: interactive configuration wizard.
+# smart-motd: interactive paged configuration wizard.
 # Re-runnable; loads existing config as defaults if present.
 
 set -u
@@ -8,79 +8,23 @@ SMART_MOTD_PREFIX="${SMART_MOTD_PREFIX:-/usr/local/lib/smart-motd}"
 SMART_MOTD_CONFIG_DIR="${SMART_MOTD_CONFIG_DIR:-/etc/smart-motd}"
 SMART_MOTD_CONFIG="${SMART_MOTD_CONFIG_DIR}/config.conf"
 
-# shellcheck source=../lib/common.sh
-. "${SMART_MOTD_PREFIX}/lib/common.sh"
-detect_distro
-
 if [[ "$EUID" -ne 0 ]]; then
     echo "smart-motd setup must be run as root (sudo smart-motd setup)." >&2
     exit 1
 fi
 
-# ---------- helpers ----------
+# Force colors for the wizard regardless of stdout being a tty.
+SMART_MOTD_FORCE_COLOR=1
+COLORS_ENABLED=true
 
-ask() {
-    # ask "Prompt" "default"
-    local prompt="$1" default="${2:-}" reply
-    if [[ -n "$default" ]]; then
-        read -r -p "$prompt [$default]: " reply
-        printf '%s' "${reply:-$default}"
-    else
-        read -r -p "$prompt: " reply
-        printf '%s' "$reply"
-    fi
-}
+# shellcheck source=../lib/common.sh
+. "${SMART_MOTD_PREFIX}/lib/common.sh"
+# shellcheck source=../lib/wizard.sh
+. "${SMART_MOTD_PREFIX}/lib/wizard.sh"
+detect_distro
 
-ask_yn() {
-    # ask_yn "Prompt" "y"|"n"
-    local prompt="$1" default="${2:-y}" reply
-    local hint="[Y/n]"
-    [[ "$default" == "n" ]] && hint="[y/N]"
-    while true; do
-        read -r -p "$prompt $hint: " reply
-        reply="${reply:-$default}"
-        case "${reply,,}" in
-            y|yes) return 0 ;;
-            n|no)  return 1 ;;
-        esac
-    done
-}
+# ---------- defaults ----------
 
-ask_list() {
-    # ask_list "Prompt" — read multi-line list, blank line ends.
-    local prompt="$1" line
-    echo "$prompt"
-    echo "  (one entry per line; empty line to finish)"
-    local items=()
-    while IFS= read -r -p "  > " line; do
-        [[ -z "$line" ]] && break
-        items+=("$line")
-    done
-    printf '%s\n' "${items[@]}"
-}
-
-# Quote a value for safe inclusion in a bash-sourced config file.
-qstr() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
-
-write_array() {
-    # write_array NAME val1 val2 ...
-    local name="$1"; shift
-    if [[ $# -eq 0 ]]; then
-        printf '%s=()\n' "$name"
-        return
-    fi
-    printf '%s=(' "$name"
-    local first=1 v
-    for v in "$@"; do
-        if (( first )); then first=0; else printf ' '; fi
-        printf '%s' "$(qstr "$v")"
-    done
-    printf ')\n'
-}
-
-# ---------- load existing config (so re-runs preserve values) ----------
-
-# Defaults
 HEADER_TEXT="Welcome"
 HEADER_SPACED=true
 WELCOME_TITLE=""
@@ -93,13 +37,21 @@ WARNING_LINES=(
 SYSTEM_DISK_PATHS=("/")
 SERVICES_LIST=()
 NETWORK_SHOW_PUBLIC_IP=true
+NETWORK_INTERFACES=()
 SSL_AUTODISCOVER_LETSENCRYPT=true
 SSL_DOMAINS=()
 SSL_WARN_DAYS=14
+SMART_DISKS=()
 DIRECTORIES_LIST=()
 LASTLOGIN_COUNT=3
 WEATHER_CITY=""
+DOCKER_FILTER=""
 COLORS_ENABLED=true
+THEME="classic"
+COLOR_THEME="default"
+FOOTER_TEXT=""
+
+# Section toggles (default-on for the basics, auto for tool-detected, off for opt-ins)
 HEADER_ENABLED=true
 WELCOME_ENABLED=true
 WARNING_ENABLED=true
@@ -119,154 +71,360 @@ DIRECTORIES_ENABLED=false
 LASTLOGIN_ENABLED=true
 WEATHER_ENABLED=false
 FOOTER_ENABLED=true
-DOCKER_FILTER=""
 
+# ---------- load existing config ----------
+
+EXISTING_CONFIG=false
 if [[ -r "$SMART_MOTD_CONFIG" ]]; then
-    echo "Existing config detected at $SMART_MOTD_CONFIG."
-    if ask_yn "Load it as defaults for this run?" y; then
-        # shellcheck disable=SC1090
-        . "$SMART_MOTD_CONFIG"
+    EXISTING_CONFIG=true
+    # shellcheck disable=SC1090
+    . "$SMART_MOTD_CONFIG"
+fi
+apply_theme
+apply_color_theme
+
+# ---------- helpers ----------
+
+qstr() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
+
+write_array() {
+    local name="$1"; shift
+    if [[ $# -eq 0 ]]; then
+        printf '%s=()\n' "$name"
+        return
     fi
-    echo
+    printf '%s=(' "$name"
+    local first=1 v
+    for v in "$@"; do
+        if (( first )); then first=0; else printf ' '; fi
+        printf '%s' "$(qstr "$v")"
+    done
+    printf ')\n'
+}
+
+# Map a "yes"/"no" string back to true/false.
+yn_bool() { case "$1" in Yes|yes|y|Y|true) echo true ;; *) echo false ;; esac; }
+
+# ---------- preview renderers ----------
+# Each takes the option text and prints lines to stdout. They run in subshells
+# so they can mutate THEME/COLOR_THEME without leaking to the wizard.
+
+preview_theme() {
+    local name="$1"
+    (
+        THEME="$name"
+        apply_theme
+        section_thick_rule
+        printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "$(spaced_text "Smart MOTD")" "${C_RESET}"
+        section_thick_rule
+        section_heading "System status"
+        kv "Hostname" "web-01.example.net"
+        kv "Uptime"   "4 days, 2 hours"
+        kv "Memory"   "1238 / 32088 MB" "${C_GREEN}"
+        section_rule
+    )
+}
+
+preview_color_theme() {
+    local name="$1"
+    (
+        COLOR_THEME="$name"
+        apply_color_theme
+        section_heading "Services"
+        printf "   %sactive      %s nginx\n" "${C_GREEN}" "${C_RESET}"
+        printf "   %sactive      %s postgresql\n" "${C_GREEN}" "${C_RESET}"
+        printf "   %sfailed      %s redis-server\n" "${C_RED}" "${C_RESET}"
+        section_rule
+    )
+}
+
+preview_header_style() {
+    local style="$1"
+    case "$style" in
+        spaced)
+            printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "$(spaced_text "Smart MOTD")" "${C_RESET}" ;;
+        plain)
+            printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "Smart MOTD" "${C_RESET}" ;;
+        upper)
+            printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "SMART MOTD" "${C_RESET}" ;;
+        lower)
+            printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "smart motd" "${C_RESET}" ;;
+    esac
+    section_thick_rule
+}
+
+preview_kv_sep() {
+    local sep_label="$1"
+    local sep
+    case "$sep_label" in
+        "Colon (:)")           sep=":" ;;
+        "Vertical bar (│)")    sep="│" ;;
+        "Triangle (▸)")        sep="▸" ;;
+        "Arrow (→)")           sep="→" ;;
+        "Equals (=)")          sep="=" ;;
+    esac
+    (
+        THEME_KV_SEPARATOR="$sep"
+        kv "Hostname" "web-01.example.net"
+        kv "Uptime"   "4 days, 2 hours"
+        kv "Memory"   "1238 / 32088 MB" "${C_GREEN}"
+    )
+}
+
+# ---------- wizard pages ----------
+
+wizard_init 0 "smart-motd setup"
+
+intro_body="Welcome! This wizard walks you through every section of your MOTD.
+
+For each question:
+  · ↑ / ↓ (or k / j) to navigate
+  · Space to toggle a checkbox
+  · Enter to confirm
+  · y / n shortcuts for yes/no
+  · Ctrl+C to abort (your existing config is left untouched)
+
+Detected: ${DISTRO_ID} (family: ${DISTRO_FAMILY})
+Existing config: $($EXISTING_CONFIG && echo "loaded as defaults" || echo "none — using built-in defaults")"
+
+wizard_intro "Welcome to smart-motd" "$intro_body"
+
+# --- 1. Section selector (multiselect) ---
+
+# Build the multiselect entries with current state encoded as 1/0 prefix.
+_pre() { case "$1" in true|auto) echo 1 ;; *) echo 0 ;; esac; }
+mapfile -t selected_sections < <(wizard_multiselect \
+    "Sections to enable" \
+    "Pick which sections appear in the MOTD. You can re-run setup any time. Sections marked 'auto' will skip themselves on hosts without the relevant tool (docker, smartctl, etc.)." \
+    -- \
+    "$(_pre "$HEADER_ENABLED")Header banner" \
+    "$(_pre "$WELCOME_ENABLED")Welcome lines (URLs, admin, etc.)" \
+    "$(_pre "$WARNING_ENABLED")Warning / legal banner" \
+    "$(_pre "$SYSTEM_ENABLED")System status (uptime, load, mem, disk)" \
+    "$(_pre "$MAINTENANCE_ENABLED")Maintenance (reboot required)" \
+    "$(_pre "$UPDATES_ENABLED")Pending package updates" \
+    "$(_pre "$SERVICES_ENABLED")systemd services" \
+    "$(_pre "$NETWORK_ENABLED")Network (interfaces + public IP)" \
+    "$(_pre "$SSL_ENABLED")SSL certificates" \
+    "$(_pre "$SECURITY_ENABLED")Security (failed SSH + fail2ban)" \
+    "$(_pre "$TEMPERATURE_ENABLED")CPU temperature" \
+    "$(_pre "$SMART_ENABLED")Disk SMART status" \
+    "$(_pre "$DOCKER_ENABLED")Docker containers" \
+    "$(_pre "$PODMAN_ENABLED")Podman containers" \
+    "$(_pre "$KUBERNETES_ENABLED")Kubernetes summary" \
+    "$(_pre "$DIRECTORIES_ENABLED")Monitored directories" \
+    "$(_pre "$LASTLOGIN_ENABLED")Recent logins" \
+    "$(_pre "$WEATHER_ENABLED")Weather (wttr.in)" \
+)
+
+# Reset all toggles to false, then enable picked ones. For tool-detected
+# sections, prefer "auto" over "true" so they self-skip on non-applicable hosts.
+HEADER_ENABLED=false; WELCOME_ENABLED=false; WARNING_ENABLED=false
+SYSTEM_ENABLED=false; MAINTENANCE_ENABLED=false; UPDATES_ENABLED=false
+SERVICES_ENABLED=false; NETWORK_ENABLED=false; SSL_ENABLED=false
+SECURITY_ENABLED=false; TEMPERATURE_ENABLED=false; SMART_ENABLED=false
+DOCKER_ENABLED=false; PODMAN_ENABLED=false; KUBERNETES_ENABLED=false
+DIRECTORIES_ENABLED=false; LASTLOGIN_ENABLED=false; WEATHER_ENABLED=false
+
+for s in "${selected_sections[@]}"; do
+    case "$s" in
+        "Header banner")                   HEADER_ENABLED=true ;;
+        "Welcome lines"*)                  WELCOME_ENABLED=true ;;
+        "Warning / legal banner")          WARNING_ENABLED=true ;;
+        "System status"*)                  SYSTEM_ENABLED=true ;;
+        "Maintenance"*)                    MAINTENANCE_ENABLED=true ;;
+        "Pending package updates")         UPDATES_ENABLED=true ;;
+        "systemd services")                SERVICES_ENABLED=true ;;
+        "Network"*)                        NETWORK_ENABLED=true ;;
+        "SSL certificates")                SSL_ENABLED=true ;;
+        "Security"*)                       SECURITY_ENABLED=true ;;
+        "CPU temperature")                 TEMPERATURE_ENABLED=auto ;;
+        "Disk SMART status")               SMART_ENABLED=auto ;;
+        "Docker containers")               DOCKER_ENABLED=auto ;;
+        "Podman containers")               PODMAN_ENABLED=auto ;;
+        "Kubernetes summary")              KUBERNETES_ENABLED=auto ;;
+        "Monitored directories")           DIRECTORIES_ENABLED=true ;;
+        "Recent logins")                   LASTLOGIN_ENABLED=true ;;
+        "Weather"*)                        WEATHER_ENABLED=true ;;
+    esac
+done
+
+# --- 2. Theme picker (preview) ---
+
+theme_choice=$(wizard_select_preview \
+    "Visual theme" \
+    "Picks the rule characters and section heading style." \
+    0 preview_theme -- \
+    "classic" "slim" "heavy" "double" "dotted" "ascii")
+THEME="$theme_choice"
+apply_theme
+
+# --- 3. Color theme picker (preview) ---
+
+color_choice=$(wizard_select_preview \
+    "Color palette" \
+    "Sets the accent color used by section headings. Status colors (green/yellow/red) stay intact." \
+    0 preview_color_theme -- \
+    "default" "ocean" "forest" "sunset" "amber" "mono")
+COLOR_THEME="$color_choice"
+apply_color_theme
+
+# --- 4. KV separator (preview) ---
+
+sep_choice=$(wizard_select_preview \
+    "Key/Value separator" \
+    "Character between a label and its value." \
+    0 preview_kv_sep -- \
+    "Colon (:)" "Vertical bar (│)" "Triangle (▸)" "Arrow (→)" "Equals (=)")
+case "$sep_choice" in
+    "Colon (:)")           THEME_KV_SEPARATOR=":" ;;
+    "Vertical bar (│)")    THEME_KV_SEPARATOR="│" ;;
+    "Triangle (▸)")        THEME_KV_SEPARATOR="▸" ;;
+    "Arrow (→)")           THEME_KV_SEPARATOR="→" ;;
+    "Equals (=)")          THEME_KV_SEPARATOR="=" ;;
+esac
+THEME="custom"  # forces the saved THEME_KV_SEPARATOR to win
+
+# --- 5. Header text ---
+
+if [[ "$HEADER_ENABLED" == "true" ]]; then
+    HEADER_TEXT=$(wizard_text \
+        "Header text" \
+        "The big banner shown at the very top of every login. Usually your project or company name." \
+        "$HEADER_TEXT")
+
+    style_choice=$(wizard_select_preview \
+        "Header style" \
+        "How the header text should be rendered." \
+        0 preview_header_style -- \
+        "spaced" "plain" "upper" "lower")
+    case "$style_choice" in
+        spaced) HEADER_SPACED=true ;;
+        *)      HEADER_SPACED=false ;;
+    esac
+    # 'upper'/'lower' transform the text outright:
+    case "$style_choice" in
+        upper) HEADER_TEXT="${HEADER_TEXT^^}" ;;
+        lower) HEADER_TEXT="${HEADER_TEXT,,}" ;;
+    esac
 fi
 
-# ---------- wizard ----------
+# --- 6. Welcome lines ---
 
-cat <<EOF
+if [[ "$WELCOME_ENABLED" == "true" ]]; then
+    WELCOME_TITLE=$(wizard_text \
+        "Welcome title" \
+        "One short line shown right after the banner, e.g. 'web-01 (production)'. Leave blank to skip." \
+        "$WELCOME_TITLE")
 
-${C_BOLD}smart-motd configuration${C_RESET}
-=================================
-Detected distro: ${DISTRO_ID} (family: ${DISTRO_FAMILY})
-
-We'll walk through the sections. You can re-run this any time with:
-  sudo smart-motd setup
-
-EOF
-
-# --- Header ---
-echo "${C_BOLD}1. Header${C_RESET}"
-HEADER_TEXT=$(ask "  Banner text" "$HEADER_TEXT")
-ask_yn "  Render with letter spacing (E r n e y …)?" "y" && HEADER_SPACED=true || HEADER_SPACED=false
-echo
-
-# --- Welcome ---
-echo "${C_BOLD}2. Welcome lines${C_RESET}"
-WELCOME_TITLE=$(ask "  Welcome title (e.g. web-01 (production); blank to skip)" "$WELCOME_TITLE")
-echo "  Add custom KV lines (format: Label|Value, e.g. Web|https://example.com)"
-echo "  Existing entries:"
-for e in "${WELCOME_LINES[@]:-}"; do echo "    - $e"; done
-if ask_yn "  Replace welcome KV lines?" "n"; then
-    mapfile -t WELCOME_LINES < <(ask_list "  Enter Label|Value lines:")
+    mapfile -t WELCOME_LINES < <(wizard_list \
+        "Welcome KV lines" \
+        "Custom labeled lines under the welcome title. Format: Label|Value (e.g. Web|https://example.com, Admin|alice)." \
+        "${WELCOME_LINES[@]}")
 fi
-echo
 
-# --- Warning ---
-echo "${C_BOLD}3. Warning / legal banner${C_RESET}"
-echo "  Current lines:"
-for e in "${WARNING_LINES[@]:-}"; do echo "    - $e"; done
-if ask_yn "  Replace warning lines?" "n"; then
-    mapfile -t WARNING_LINES < <(ask_list "  Enter warning lines:")
+# --- 7. Warning / legal banner ---
+
+if [[ "$WARNING_ENABLED" == "true" ]]; then
+    mapfile -t WARNING_LINES < <(wizard_list \
+        "Warning lines" \
+        "The legal / authorized-access notice. The first line is highlighted." \
+        "${WARNING_LINES[@]}")
 fi
-echo
 
-# --- System status ---
-echo "${C_BOLD}4. System status (uptime, load, mem, disk)${C_RESET}"
-echo "  Disk mountpoints to display: ${SYSTEM_DISK_PATHS[*]}"
-if ask_yn "  Change them?" "n"; then
-    mapfile -t SYSTEM_DISK_PATHS < <(ask_list "  Enter mountpoints (e.g. / /var /home):")
+# --- 8. System disk paths ---
+
+if [[ "$SYSTEM_ENABLED" == "true" ]]; then
+    mapfile -t SYSTEM_DISK_PATHS < <(wizard_list \
+        "Disk mountpoints to display" \
+        "Each entry shows '<used> / <total> (<pct>% used)'. Common picks: /, /var, /home, /srv." \
+        "${SYSTEM_DISK_PATHS[@]}")
+    [[ ${#SYSTEM_DISK_PATHS[@]} -eq 0 ]] && SYSTEM_DISK_PATHS=("/")
 fi
-echo
 
-# --- Updates ---
-echo "${C_BOLD}5. Package updates${C_RESET}"
-ask_yn "  Show pending package updates?" "y" && UPDATES_ENABLED=true || UPDATES_ENABLED=false
-echo
+# --- 9. systemd services ---
 
-# --- Services ---
-echo "${C_BOLD}6. systemd services${C_RESET}"
-echo "  Currently watched: ${SERVICES_LIST[*]:-(none)}"
-if ask_yn "  Configure watched services?" "n"; then
-    mapfile -t SERVICES_LIST < <(ask_list "  systemd unit names (e.g. nginx postgresql):")
-    [[ ${#SERVICES_LIST[@]} -gt 0 ]] && SERVICES_ENABLED=true
+if [[ "$SERVICES_ENABLED" == "true" ]]; then
+    mapfile -t SERVICES_LIST < <(wizard_list \
+        "systemd units to monitor" \
+        "Each shows active/failed/inactive with color. Add unit names without .service (e.g. nginx, postgresql, redis-server)." \
+        "${SERVICES_LIST[@]}")
+    [[ ${#SERVICES_LIST[@]} -eq 0 ]] && SERVICES_ENABLED=false
 fi
-echo
 
-# --- Network ---
-echo "${C_BOLD}7. Network${C_RESET}"
-ask_yn "  Show interfaces & IPs?" "y" && NETWORK_ENABLED=true || NETWORK_ENABLED=false
-ask_yn "  Look up & display public IP?" "y" && NETWORK_SHOW_PUBLIC_IP=true || NETWORK_SHOW_PUBLIC_IP=false
-echo
+# --- 10. SSL certs ---
 
-# --- SSL ---
-echo "${C_BOLD}8. SSL certificates${C_RESET}"
-if ask_yn "  Show SSL certificate expiry?" "y"; then
-    SSL_ENABLED=true
-    ask_yn "  Auto-discover Let's Encrypt certs in /etc/letsencrypt/live/?" "y" \
-        && SSL_AUTODISCOVER_LETSENCRYPT=true || SSL_AUTODISCOVER_LETSENCRYPT=false
-    echo "  Additional domains/files (host[:port] for remote check, or absolute path to .pem)"
-    echo "  Current: ${SSL_DOMAINS[*]:-(none)}"
-    if ask_yn "  Replace the additional list?" "n"; then
-        mapfile -t SSL_DOMAINS < <(ask_list "  Domains/paths:")
+if [[ "$SSL_ENABLED" == "true" ]]; then
+    if wizard_yesno "Auto-discover Let's Encrypt certs?" \
+        "Look in /etc/letsencrypt/live/* and report expiry days for each cert found. Recommended if you use Certbot." \
+        "$([[ "$SSL_AUTODISCOVER_LETSENCRYPT" == "true" ]] && echo y || echo n)"; then
+        SSL_AUTODISCOVER_LETSENCRYPT=true
+    else
+        SSL_AUTODISCOVER_LETSENCRYPT=false
     fi
-    SSL_WARN_DAYS=$(ask "  Warn when fewer than N days remain" "$SSL_WARN_DAYS")
-else
-    SSL_ENABLED=false
+
+    mapfile -t SSL_DOMAINS < <(wizard_list \
+        "Additional SSL targets" \
+        "Optional. Each entry can be:
+  · 'example.com'         — remote check on port 443
+  · 'example.com:8443'    — remote check on custom port
+  · '/path/to/cert.pem'   — local PEM file" \
+        "${SSL_DOMAINS[@]}")
+
+    SSL_WARN_DAYS=$(wizard_text \
+        "SSL warning threshold" \
+        "Number of days before expiry that should trigger a yellow warning." \
+        "$SSL_WARN_DAYS")
 fi
-echo
 
-# --- Security ---
-echo "${C_BOLD}9. Security (failed SSH + fail2ban)${C_RESET}"
-ask_yn "  Show?" "y" && SECURITY_ENABLED=true || SECURITY_ENABLED=false
-echo
+# --- 11. Network ---
 
-# --- Containers ---
-echo "${C_BOLD}10. Containers${C_RESET}"
-ask_yn "  Show Docker containers (auto-skip if Docker not installed)?" "y" \
-    && DOCKER_ENABLED=auto || DOCKER_ENABLED=false
-ask_yn "  Show Podman containers?" "y" \
-    && PODMAN_ENABLED=auto || PODMAN_ENABLED=false
-ask_yn "  Show Kubernetes summary?" "y" \
-    && KUBERNETES_ENABLED=auto || KUBERNETES_ENABLED=false
-DOCKER_FILTER=$(ask "  Optional Docker name filter (regex; blank for all)" "$DOCKER_FILTER")
-echo
-
-# --- Hardware ---
-echo "${C_BOLD}11. Hardware sensors${C_RESET}"
-ask_yn "  Show CPU temperature (auto-skip if unavailable)?" "y" \
-    && TEMPERATURE_ENABLED=auto || TEMPERATURE_ENABLED=false
-ask_yn "  Show disk SMART status (requires smartmontools)?" "y" \
-    && SMART_ENABLED=auto || SMART_ENABLED=false
-echo
-
-# --- Directories ---
-echo "${C_BOLD}12. Monitored directories${C_RESET}"
-echo "  E.g. backup destinations, big project dirs."
-echo "  Current: ${DIRECTORIES_LIST[*]:-(none)}"
-if ask_yn "  Configure now?" "n"; then
-    DIRECTORIES_ENABLED=true
-    echo "  Format: Label|/absolute/path"
-    mapfile -t DIRECTORIES_LIST < <(ask_list "  Entries:")
+if [[ "$NETWORK_ENABLED" == "true" ]]; then
+    if wizard_yesno "Show public IP?" \
+        "Calls api.ipify.org (cached for 5 min). Disable on air-gapped hosts." \
+        "$([[ "$NETWORK_SHOW_PUBLIC_IP" == "true" ]] && echo y || echo n)"; then
+        NETWORK_SHOW_PUBLIC_IP=true
+    else
+        NETWORK_SHOW_PUBLIC_IP=false
+    fi
 fi
-echo
 
-# --- Last logins ---
-echo "${C_BOLD}13. Recent logins${C_RESET}"
-ask_yn "  Show recent successful logins?" "y" && LASTLOGIN_ENABLED=true || LASTLOGIN_ENABLED=false
-LASTLOGIN_COUNT=$(ask "  How many to show" "$LASTLOGIN_COUNT")
-echo
+# --- 12. Docker filter ---
 
-# --- Weather ---
-echo "${C_BOLD}14. Weather (just for fun, uses wttr.in)${C_RESET}"
-if ask_yn "  Enable?" "n"; then
-    WEATHER_ENABLED=true
-    WEATHER_CITY=$(ask "  City (blank = auto-detect by IP)" "$WEATHER_CITY")
+if [[ "$DOCKER_ENABLED" != "false" ]]; then
+    DOCKER_FILTER=$(wizard_text \
+        "Docker name filter" \
+        "Optional regex to limit which containers are listed by name (e.g. '^web|^api'). Leave blank for all." \
+        "$DOCKER_FILTER")
 fi
-echo
 
-# --- Colors ---
-echo "${C_BOLD}15. Colors${C_RESET}"
-ask_yn "  Use ANSI colors?" "y" && COLORS_ENABLED=true || COLORS_ENABLED=false
-echo
+# --- 13. Monitored directories ---
+
+if [[ "$DIRECTORIES_ENABLED" == "true" ]]; then
+    mapfile -t DIRECTORIES_LIST < <(wizard_list \
+        "Monitored directories" \
+        "Show 'du -sh' for each path (cached for 5 min). Format: Label|/absolute/path (e.g. Backups|/srv/backups)." \
+        "${DIRECTORIES_LIST[@]}")
+    [[ ${#DIRECTORIES_LIST[@]} -eq 0 ]] && DIRECTORIES_ENABLED=false
+fi
+
+# --- 14. Last login count ---
+
+if [[ "$LASTLOGIN_ENABLED" == "true" ]]; then
+    LASTLOGIN_COUNT=$(wizard_text \
+        "Recent logins to show" \
+        "How many of the most recent successful logins to display." \
+        "$LASTLOGIN_COUNT")
+fi
+
+# --- 15. Weather ---
+
+if [[ "$WEATHER_ENABLED" == "true" ]]; then
+    WEATHER_CITY=$(wizard_text \
+        "City for weather" \
+        "Used by wttr.in. Leave blank to auto-detect by IP. Examples: 'Berlin', 'New York', 'Tokyo'." \
+        "$WEATHER_CITY")
+fi
 
 # ---------- write config ----------
 
@@ -277,6 +435,11 @@ TS=$(date '+%Y-%m-%d %H:%M:%S')
     echo "# smart-motd configuration"
     echo "# Generated by 'smart-motd setup' at $TS"
     echo "# Re-run 'sudo smart-motd setup' to reconfigure, or edit this file directly."
+    echo
+    echo "# ---- Theme ----"
+    echo "THEME=$(qstr "$THEME")"
+    echo "COLOR_THEME=$(qstr "$COLOR_THEME")"
+    echo "THEME_KV_SEPARATOR=$(qstr "${THEME_KV_SEPARATOR}")"
     echo
     echo "# ---- Header ----"
     echo "HEADER_TEXT=$(qstr "$HEADER_TEXT")"
@@ -329,16 +492,31 @@ TS=$(date '+%Y-%m-%d %H:%M:%S')
 
 chmod 0644 "$SMART_MOTD_CONFIG"
 
-echo "${C_GREEN}Config saved to $SMART_MOTD_CONFIG${C_RESET}"
-echo
-
 # ---------- prime cache ----------
-echo "Priming cache (this may take a few seconds)…"
+
+_wiz_clear
+printf '\n  \e[1;32m✓ Configuration saved\e[0m to %s\n\n' "$SMART_MOTD_CONFIG"
+printf '  Priming cache (this may take a few seconds)…\n'
 "${SMART_MOTD_PREFIX}/bin/motd-cache-update" || true
-echo
+printf '  \e[1;32m✓ Cache primed\e[0m\n\n'
 
 # ---------- preview ----------
-if ask_yn "Preview the MOTD now?" "y"; then
-    echo
+
+if wizard_yesno "Show preview now?" \
+    "Render the MOTD with your new settings to verify everything looks right." y; then
+    _wiz_clear
+    printf '\n'
     SMART_MOTD_FORCE_COLOR=1 "${SMART_MOTD_PREFIX}/bin/motd-generate"
+    printf '\n  \e[2m(Press Enter to exit)\e[0m '
+    read -r _ </dev/tty
 fi
+
+wizard_done "All done" "smart-motd will now render this on every login.
+
+Useful commands:
+  smart-motd show         · preview the MOTD any time
+  sudo smart-motd setup   · re-run this wizard
+  sudo smart-motd edit    · edit the raw config
+  sudo smart-motd uninstall
+
+Config: $SMART_MOTD_CONFIG"
