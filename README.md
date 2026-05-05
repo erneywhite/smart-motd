@@ -13,17 +13,16 @@ Cross-distro (Debian / Ubuntu / RHEL / CentOS / Rocky / Alma / Fedora / Arch / o
 ```
 W e l c o m e   t o   y o u r   s e r v e r
 ================================================================
- Welcome to: live.example.com (production)
- URL_1 : https://live.example.com
- RTMP  : rtmp://ingest.example.com:1935/live
- Admin : alice
+ Welcome to: web-01 (production)
+ Web    : https://example.com
+ Admin  : admin@example.com
 
  Warning: Authorized access only!
  All connections are logged and monitored.
  Unauthorized use may be subject to criminal prosecution.
 ================================================================
 -------------------- System status --------------------
- Hostname : node1.example.com
+ Hostname : web-01.example.net
  Uptime   : 4 days, 18 hours, 16 minutes
  Load     : 0.05, 0.07, 0.02
  Memory   : 1238 / 32088 MB
@@ -44,7 +43,7 @@ W e l c o m e   t o   y o u r   s e r v e r
  eth0     : 10.0.0.5
 -------------------------------------------------------
 ---------------- SSL certificates ---------------------
-   live.example.com         84d left
+   example.com              84d left
    api.example.com          11d left (expiring soon)
 -------------------------------------------------------
 --------------------- Security ------------------------
@@ -52,7 +51,7 @@ W e l c o m e   t o   y o u r   s e r v e r
  fail2ban : 0 banned across 2 jail(s)
 -------------------------------------------------------
 ------------------ Docker containers ------------------
- Containers: 5 running / 5 total
+ Containers: 3 running / 3 total
    nginx                       Up 32 minutes
    postgres                    Up 3 days (healthy)
    redis                       Up 12 hours

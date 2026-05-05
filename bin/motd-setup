@@ -151,8 +151,8 @@ echo
 
 # --- Welcome ---
 echo "${C_BOLD}2. Welcome lines${C_RESET}"
-WELCOME_TITLE=$(ask "  Welcome title (e.g. live.example.com (production); blank to skip)" "$WELCOME_TITLE")
-echo "  Add custom KV lines (format: Label|Value, e.g. URL_1|https://example.com)"
+WELCOME_TITLE=$(ask "  Welcome title (e.g. web-01 (production); blank to skip)" "$WELCOME_TITLE")
+echo "  Add custom KV lines (format: Label|Value, e.g. Web|https://example.com)"
 echo "  Existing entries:"
 for e in "${WELCOME_LINES[@]:-}"; do echo "    - $e"; done
 if ask_yn "  Replace welcome KV lines?" "n"; then
