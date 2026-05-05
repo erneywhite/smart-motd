@@ -110,6 +110,19 @@ write_array() {
     printf ')\n'
 }
 
+# Returns the 0-based index of $1 in the rest of the args, or 0 if not found.
+# Used to pre-highlight the user's current value when re-running setup so
+# the cursor lands on what they already have configured.
+_index_of() {
+    local needle="$1"; shift
+    local i=0 item
+    for item in "$@"; do
+        [[ "$item" == "$needle" ]] && { printf '%d' "$i"; return; }
+        i=$((i + 1))
+    done
+    printf '0'
+}
+
 # ---------- preview renderers ----------
 # All previews use the user's actual HEADER_TEXT (collected on the first
 # config page) so the preview matches what they will see at login.
@@ -192,11 +205,18 @@ else
 fi
 
 # --- Page 0: language selection (always shown, hardcoded bilingual) ---
+# WIZ_LANG may already be set from the loaded config, so default the cursor
+# to that previous choice on re-runs.
+LANG_OPTIONS=("English" "Русский")
+case "${WIZ_LANG:-en}" in
+    ru) lang_default_idx=1 ;;
+    *)  lang_default_idx=0 ;;
+esac
 lang_choice=$(wizard_select \
     "Choose language / Выберите язык" \
     "All wizard prompts will be shown in this language. Your config values and the rendered MOTD stay in English / Системный язык MOTD не изменится — только подсказки визарда." \
-    0 -- \
-    "English" "Русский")
+    "$lang_default_idx" -- \
+    "${LANG_OPTIONS[@]}")
 case "$lang_choice" in
     "Русский") WIZ_LANG="ru" ;;
     *)          WIZ_LANG="en" ;;
@@ -359,11 +379,18 @@ if [[ "$HEADER_ENABLED" == "true" ]]; then
 "Большой баннер сверху при каждом логине. Обычно — название проекта или компании. Следующие страницы покажут предпросмотр.")" \
         "$HEADER_TEXT")
 
+    HDR_STYLES=("spaced" "plain" "upper" "lower")
+    # On re-run, default the cursor to the user's previous spaced/plain choice.
+    # (upper/lower aren't recoverable — they transform HEADER_TEXT directly.)
+    case "${HEADER_SPACED:-true}" in
+        true)  hdr_style_default=0 ;;  # spaced
+        *)     hdr_style_default=1 ;;  # plain
+    esac
     style_choice=$(wizard_select_preview \
         "$(_l "Header style" "Стиль заголовка")" \
         "$(_l "How the header text should be rendered. Preview below uses your text." "Как именно отображать текст. Предпросмотр снизу использует ваш текст.")" \
-        0 preview_header_style -- \
-        "spaced" "plain" "upper" "lower")
+        "$hdr_style_default" preview_header_style -- \
+        "${HDR_STYLES[@]}")
     case "$style_choice" in
         spaced) HEADER_SPACED=true ;;
         *)      HEADER_SPACED=false ;;
@@ -375,44 +402,63 @@ if [[ "$HEADER_ENABLED" == "true" ]]; then
 fi
 
 # --- Theme picker (preview uses real HEADER_TEXT now) ---
+# Remember the user's existing theme + KV-separator override BEFORE we
+# unset the resolved theme vars (so the next page can pre-highlight them).
+PREV_THEME="${THEME:-classic}"
+PREV_KV_SEP="${THEME_KV_SEPARATOR:-}"
 # Drop any preset values from the previously-loaded config so the new pick
 # fully takes effect (apply_theme uses := and would otherwise keep old chars).
 unset THEME_BANNER_CHAR THEME_DIVIDER_CHAR THEME_KV_SEPARATOR THEME_HEADING_STYLE
 
+THEMES=("classic" "slim" "heavy" "double" "dotted" "ascii" "arrows" "stars" \
+        "wave" "block" "pipes" "retro" "compact" "chevrons" "bullets" "cross" \
+        "plus" "cosmic" "sharp" "zen")
+theme_default_idx=$(_index_of "$PREV_THEME" "${THEMES[@]}")
 theme_choice=$(wizard_select_preview \
     "$(_l "Visual theme" "Визуальная тема")" \
     "$(_l \
 "Choose the rule characters and section heading style for the banner. Live preview below shows how it will look." \
 "Выберите символы рамок и стиль заголовков. Предпросмотр снизу покажет результат.")" \
-    0 preview_theme -- \
-    "classic" "slim" "heavy" "double" "dotted" "ascii" "arrows" "stars" \
-    "wave" "block" "pipes" "retro" "compact" "chevrons" "bullets" "cross" \
-    "plus" "cosmic" "sharp" "zen")
+    "$theme_default_idx" preview_theme -- \
+    "${THEMES[@]}")
 THEME="$theme_choice"
 unset THEME_BANNER_CHAR THEME_DIVIDER_CHAR THEME_KV_SEPARATOR THEME_HEADING_STYLE
 apply_theme
 
 # --- Color theme ---
 
+COLOR_THEMES=("default" "ocean" "forest" "sunset" "amber" "mono" \
+              "matrix" "neon" "coral" "mint" "sky" "gold" "snow")
+color_default_idx=$(_index_of "${COLOR_THEME:-default}" "${COLOR_THEMES[@]}")
 color_choice=$(wizard_select_preview \
     "$(_l "Color palette" "Цветовая палитра")" \
     "$(_l \
 "Sets the accent color used by section headings. Status colors (green/yellow/red) stay intact." \
 "Задаёт основной цвет заголовков секций. Цвета статусов (зелёный/жёлтый/красный) не меняются.")" \
-    0 preview_color_theme -- \
-    "default" "ocean" "forest" "sunset" "amber" "mono" \
-    "matrix" "neon" "coral" "mint" "sky" "gold" "snow")
+    "$color_default_idx" preview_color_theme -- \
+    "${COLOR_THEMES[@]}")
 COLOR_THEME="$color_choice"
 apply_color_theme
 
 # --- KV separator ---
 
+# Honor the user's previous explicit override; otherwise fall back to what
+# the freshly-applied theme set (so the picker still shows a sensible
+# starting position even on first run).
+case "${PREV_KV_SEP:-$THEME_KV_SEPARATOR}" in
+    ":")  sep_default_idx=0 ;;
+    "│")  sep_default_idx=1 ;;
+    "▸")  sep_default_idx=2 ;;
+    "→")  sep_default_idx=3 ;;
+    "=")  sep_default_idx=4 ;;
+    *)    sep_default_idx=0 ;;
+esac
 sep_choice=$(wizard_select_preview \
     "$(_l "Key/Value separator" "Разделитель ключ/значение")" \
     "$(_l \
 "Character between a label and its value (Hostname : web-01). Theme presets pick a default for you; pick differently here to override." \
 "Символ между меткой и значением (Hostname : web-01). У темы есть свой default — здесь можно переопределить.")" \
-    0 preview_kv_sep -- \
+    "$sep_default_idx" preview_kv_sep -- \
     "Colon (:)" "Vertical bar (│)" "Triangle (▸)" "Arrow (→)" "Equals (=)")
 case "$sep_choice" in
     "Colon (:)")        THEME_KV_SEPARATOR=":" ;;
@@ -686,6 +732,12 @@ TS=$(date '+%Y-%m-%d %H:%M:%S')
     echo "# smart-motd configuration"
     echo "# Generated by 'smart-motd setup' at $TS"
     echo "# Re-run 'sudo smart-motd setup' to reconfigure, or edit this file directly."
+    echo
+    echo "# ---- Wizard ----"
+    echo "# Language used in the setup wizard prompts (en / ru). Re-runs of"
+    echo "# the wizard pre-select this language but you can change it on the"
+    echo "# first page each time. Doesn't affect the rendered MOTD."
+    echo "WIZ_LANG=$(qstr "${WIZ_LANG:-en}")"
     echo
     echo "# ---- Theme ----"
     echo "THEME=$(qstr "$THEME")"
