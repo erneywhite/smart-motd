@@ -207,7 +207,11 @@ For each question:
   · Ctrl+C to abort (your existing config is left untouched)
 
 Detected: ${DISTRO_ID} (family: ${DISTRO_FAMILY})
-Existing config: $($EXISTING_CONFIG && echo \"loaded as defaults\" || echo \"none — using built-in defaults\")" \
+Existing config: $($EXISTING_CONFIG && echo \"loaded as defaults\" || echo \"none — using built-in defaults\")
+
+────────────────────────────────────────────
+smart-motd · by @erneywhite
+https://github.com/erneywhite/smart-motd" \
 "Добро пожаловать! Визард проведёт через все секции вашего MOTD.
 
 Управление:
@@ -218,7 +222,11 @@ Existing config: $($EXISTING_CONFIG && echo \"loaded as defaults\" || echo \"non
   · Ctrl+C — отменить (текущий конфиг не пострадает)
 
 Дистрибутив: ${DISTRO_ID} (семейство: ${DISTRO_FAMILY})
-Существующий конфиг: $($EXISTING_CONFIG && echo \"загружен как значения по умолчанию\" || echo \"нет — используются встроенные defaults\")")
+Существующий конфиг: $($EXISTING_CONFIG && echo \"загружен как значения по умолчанию\" || echo \"нет — используются встроенные defaults\")
+
+────────────────────────────────────────────
+smart-motd · by @erneywhite
+https://github.com/erneywhite/smart-motd")
 
 wizard_intro "$(_l "Welcome to smart-motd" "Добро пожаловать в smart-motd")" "$intro_body"
 
@@ -736,7 +744,12 @@ Useful commands:
   sudo smart-motd edit    · edit the raw config
   sudo smart-motd uninstall
 
-Config: $SMART_MOTD_CONFIG" \
+Config: $SMART_MOTD_CONFIG
+
+────────────────────────────────────────────
+Enjoying smart-motd? Star it on GitHub:
+https://github.com/erneywhite/smart-motd
+by @erneywhite" \
 "smart-motd теперь будет показывать это при каждом логине.
 
 Полезные команды:
@@ -745,4 +758,9 @@ Config: $SMART_MOTD_CONFIG" \
   sudo smart-motd edit    · отредактировать конфиг напрямую
   sudo smart-motd uninstall
 
-Конфиг: $SMART_MOTD_CONFIG")"
+Конфиг: $SMART_MOTD_CONFIG
+
+────────────────────────────────────────────
+Нравится smart-motd? Поставь звезду на GitHub:
+https://github.com/erneywhite/smart-motd
+by @erneywhite")"
