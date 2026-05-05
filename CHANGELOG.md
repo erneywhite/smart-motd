@@ -3,6 +3,25 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0]
+
+### Added
+- Network section now has an explicit yes/no toggle for showing
+  internal interface IPs, separate from the public-IP toggle. The
+  setup wizard asks both questions, and if interfaces are enabled
+  it follows up with a multiselect of detected interfaces (with
+  the IPv4 each one carries shown next to its name) plus an
+  "All interfaces (auto)" option that shows every non-loopback
+  interface (including future ones added after setup).
+- New `NETWORK_SHOW_INTERFACES` config var. Empty `NETWORK_INTERFACES`
+  + `NETWORK_SHOW_INTERFACES=true` means "show every non-loopback
+  interface"; populated `NETWORK_INTERFACES` filters down to the
+  listed ones; `NETWORK_SHOW_INTERFACES=false` hides the interface
+  list entirely (useful for cluttered hosts where Docker/k8s/VPN
+  add a dozen virtual interfaces).
+- The Network section now skips its heading entirely when both
+  toggles are off, instead of rendering an empty box.
+
 ## [1.0.1]
 
 ### Fixed

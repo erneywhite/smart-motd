@@ -665,7 +665,10 @@ fi
 
 # --- Network ---
 
-if [[ "$NETWORK_ENABLED" == "true" ]]; then
+configure_network_page() {
+    local detected=() iface mp existing pre dup multi=() selected_ifaces=()
+
+    # Public IP toggle
     if wizard_yesno \
         "$(_l "Show public IP?" "Показывать публичный IP?")" \
         "$(_l \
@@ -676,6 +679,87 @@ if [[ "$NETWORK_ENABLED" == "true" ]]; then
     else
         NETWORK_SHOW_PUBLIC_IP=false
     fi
+
+    # Internal interfaces toggle
+    if ! wizard_yesno \
+        "$(_l "Show internal interface IPs?" "Показывать IP внутренних интерфейсов?")" \
+        "$(_l \
+"Lists each network interface's IPv4 address (eth0, ens18, wg0, docker0, …). Useful for checking which IP a server is reachable on internally." \
+"Покажет IPv4-адрес каждого интерфейса (eth0, ens18, wg0, docker0, …). Удобно чтобы понять по какому IP сервер доступен в локалке.")" \
+        "$([[ "${NETWORK_SHOW_INTERFACES:-true}" == "true" ]] && echo y || echo n)"; then
+        NETWORK_SHOW_INTERFACES=false
+        NETWORK_INTERFACES=()
+        return
+    fi
+    NETWORK_SHOW_INTERFACES=true
+
+    # Detect interfaces. Skip loopback.
+    if command -v ip >/dev/null 2>&1; then
+        while IFS= read -r iface; do
+            [[ -z "$iface" || "$iface" == "lo" ]] && continue
+            local seen=0 e
+            for e in "${detected[@]}"; do
+                [[ "$e" == "$iface" ]] && seen=1 && break
+            done
+            (( seen )) || detected+=("$iface")
+        done < <(ip -o -4 addr show 2>/dev/null | awk '{print $2}' | sort -u)
+    fi
+
+    # Build multiselect entries.
+    # Special "All interfaces" first entry maps to NETWORK_INTERFACES=()
+    # (i.e. show every detected one).
+    multi=()
+    local all_pre=1
+    [[ ${#NETWORK_INTERFACES[@]} -gt 0 ]] && all_pre=0
+    multi+=("${all_pre}$(_l "All interfaces (auto)" "Все интерфейсы (автоматически)")")
+    local i
+    for i in "${detected[@]}"; do
+        # IP for context
+        local ip_for_iface
+        ip_for_iface=$(ip -o -4 addr show "$i" 2>/dev/null | awk 'NR==1 {split($4,a,"/"); print a[1]}')
+        pre=0
+        for e in "${NETWORK_INTERFACES[@]}"; do
+            [[ "$e" == "$i" ]] && pre=1 && break
+        done
+        # If "All" is checked, leave the per-iface checkboxes off — they only
+        # matter when the operator wants a specific subset.
+        if (( all_pre )); then pre=0; fi
+        multi+=("${pre}${i} (${ip_for_iface:-no IPv4})")
+    done
+
+    if [[ ${#multi[@]} -le 1 ]]; then
+        # No interfaces detected — skip the multiselect entirely.
+        NETWORK_INTERFACES=()
+        return
+    fi
+
+    mapfile -t selected_ifaces < <(wizard_multiselect \
+        "$(_l "Pick interfaces to display" "Выберите интерфейсы для показа")" \
+        "$(_l \
+"Pick 'All interfaces (auto)' to always show every non-loopback interface — recommended unless you specifically want to hide some (e.g. docker0). If 'All' is unchecked, only the explicitly-checked interfaces are shown." \
+"Выберите 'Все интерфейсы (автоматически)', чтобы показывать каждый non-loopback интерфейс — это рекомендуемый вариант, если только не нужно специально скрыть какие-то (например docker0). Если 'Все' не отмечено — будут показаны только явно выбранные.")" \
+        -- "${multi[@]}")
+
+    NETWORK_INTERFACES=()
+    local picked_all=false
+    for entry in "${selected_ifaces[@]}"; do
+        case "$entry" in
+            "All interfaces (auto)"|"Все интерфейсы (автоматически)")
+                picked_all=true
+                ;;
+            *)
+                # strip trailing " (ip)" suffix to recover bare iface name
+                NETWORK_INTERFACES+=("${entry% (*}")
+                ;;
+        esac
+    done
+    if $picked_all; then
+        NETWORK_INTERFACES=()  # empty = show all
+    fi
+}
+
+if [[ "$NETWORK_ENABLED" == "true" ]]; then
+    configure_network_page
 fi
 
 # --- Docker filter ---
@@ -768,6 +852,8 @@ TS=$(date '+%Y-%m-%d %H:%M:%S')
     echo
     echo "# ---- Network ----"
     echo "NETWORK_SHOW_PUBLIC_IP=$NETWORK_SHOW_PUBLIC_IP"
+    echo "NETWORK_SHOW_INTERFACES=${NETWORK_SHOW_INTERFACES:-true}"
+    write_array NETWORK_INTERFACES "${NETWORK_INTERFACES[@]}"
     echo
     echo "# ---- SSL ----"
     echo "SSL_AUTODISCOVER_LETSENCRYPT=$SSL_AUTODISCOVER_LETSENCRYPT"
