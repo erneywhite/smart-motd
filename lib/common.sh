@@ -30,10 +30,20 @@ _color_init() {
         C_CYAN=$'\033[36m'
         C_WHITE=$'\033[37m'
         C_GREY=$'\033[90m'
+        # Bright (high-intensity) variants
+        C_BRIGHT_RED=$'\033[91m'
+        C_BRIGHT_GREEN=$'\033[92m'
+        C_BRIGHT_YELLOW=$'\033[93m'
+        C_BRIGHT_BLUE=$'\033[94m'
+        C_BRIGHT_MAGENTA=$'\033[95m'
+        C_BRIGHT_CYAN=$'\033[96m'
+        C_BRIGHT_WHITE=$'\033[97m'
     else
         C_RESET=""; C_BOLD=""; C_DIM=""
         C_RED=""; C_GREEN=""; C_YELLOW=""; C_BLUE=""
         C_MAGENTA=""; C_CYAN=""; C_WHITE=""; C_GREY=""
+        C_BRIGHT_RED=""; C_BRIGHT_GREEN=""; C_BRIGHT_YELLOW=""
+        C_BRIGHT_BLUE=""; C_BRIGHT_MAGENTA=""; C_BRIGHT_CYAN=""; C_BRIGHT_WHITE=""
     fi
 }
 _color_init
@@ -152,6 +162,48 @@ apply_theme() {
             : "${THEME_KV_SEPARATOR:=:}"
             : "${THEME_HEADING_STYLE:=left}"
             ;;
+        chevrons)
+            : "${THEME_BANNER_CHAR:=»}"
+            : "${THEME_DIVIDER_CHAR:=»}"
+            : "${THEME_KV_SEPARATOR:=»}"
+            : "${THEME_HEADING_STYLE:=chevrons}"
+            ;;
+        bullets)
+            : "${THEME_BANNER_CHAR:=•}"
+            : "${THEME_DIVIDER_CHAR:=•}"
+            : "${THEME_KV_SEPARATOR:=•}"
+            : "${THEME_HEADING_STYLE:=bullets}"
+            ;;
+        cross)
+            : "${THEME_BANNER_CHAR:=╳}"
+            : "${THEME_DIVIDER_CHAR:=╳}"
+            : "${THEME_KV_SEPARATOR:=╳}"
+            : "${THEME_HEADING_STYLE:=bracketed}"
+            ;;
+        plus)
+            : "${THEME_BANNER_CHAR:=+}"
+            : "${THEME_DIVIDER_CHAR:=+}"
+            : "${THEME_KV_SEPARATOR:=+}"
+            : "${THEME_HEADING_STYLE:=left}"
+            ;;
+        cosmic)
+            : "${THEME_BANNER_CHAR:=·}"
+            : "${THEME_DIVIDER_CHAR:=·}"
+            : "${THEME_KV_SEPARATOR:=◇}"
+            : "${THEME_HEADING_STYLE:=stars}"
+            ;;
+        sharp)
+            : "${THEME_BANNER_CHAR:=◢}"
+            : "${THEME_DIVIDER_CHAR:=◣}"
+            : "${THEME_KV_SEPARATOR:=◆}"
+            : "${THEME_HEADING_STYLE:=bracketed}"
+            ;;
+        zen)
+            : "${THEME_BANNER_CHAR:=─}"
+            : "${THEME_DIVIDER_CHAR:= }"
+            : "${THEME_KV_SEPARATOR:=─}"
+            : "${THEME_HEADING_STYLE:=zen}"
+            ;;
         custom|*)
             : "${THEME_BANNER_CHAR:==}"
             : "${THEME_DIVIDER_CHAR:=-}"
@@ -174,6 +226,13 @@ apply_color_theme() {
         sunset)   THEME_ACCENT="$C_MAGENTA" ;;
         amber)    THEME_ACCENT="$C_YELLOW" ;;
         mono)     THEME_ACCENT="$C_BOLD" ;;
+        matrix)   THEME_ACCENT="$C_BRIGHT_GREEN" ;;
+        neon)     THEME_ACCENT="$C_BRIGHT_MAGENTA" ;;
+        coral)    THEME_ACCENT="$C_BRIGHT_RED" ;;
+        mint)     THEME_ACCENT="$C_BRIGHT_CYAN" ;;
+        sky)      THEME_ACCENT="$C_BRIGHT_BLUE" ;;
+        gold)     THEME_ACCENT="$C_BRIGHT_YELLOW" ;;
+        snow)     THEME_ACCENT="$C_BRIGHT_WHITE" ;;
         *)        THEME_ACCENT="$C_CYAN" ;;
     esac
 }
@@ -244,6 +303,34 @@ section_heading() {
                 "${C_CYAN}" "$prefix" \
                 "${C_BOLD}${accent}" "$title" "${C_RESET}${C_CYAN}" \
                 "$tail" "${C_RESET}"
+            ;;
+        chevrons)
+            # »»» Title «««
+            local pad=$(( (total - ${#title} - 8) / 2 ))
+            (( pad < 1 )) && pad=1
+            local prefix tail
+            prefix=$(_repeat_char '»' "$pad")
+            tail=$(_repeat_char '«' "$pad")
+            printf "%s%s %s%s%s %s%s\n" \
+                "${C_CYAN}" "$prefix" \
+                "${C_BOLD}${accent}" "$title" "${C_RESET}${C_CYAN}" \
+                "$tail" "${C_RESET}"
+            ;;
+        bullets)
+            # • • • Title • • •
+            local pad=$(( (total - ${#title} - 8) / 4 ))
+            (( pad < 1 )) && pad=1
+            local prefix=""
+            local i
+            for ((i = 0; i < pad; i++)); do prefix+="• "; done
+            printf "%s%s%s %s%s%s %s%s%s\n" \
+                "${C_MAGENTA}" "$prefix" "${C_RESET}" \
+                "${C_BOLD}${accent}" "$title" "${C_RESET}" \
+                "${C_MAGENTA}" "$prefix" "${C_RESET}"
+            ;;
+        zen)
+            # Just the title, indented and underlined.
+            printf "  %s%s%s\n" "${C_BOLD}${accent}" "$title" "${C_RESET}"
             ;;
         bracketed)
             # ━━━━━[ Title ]━━━━━

@@ -172,13 +172,40 @@ cache_update_ssl() {
 }
 
 # ---- weather ----
+# wttr.in's %l format echoes "Latitude,Longitude" when no city is specified
+# (it geolocates by IP but doesn't reverse it to a name). When the user
+# leaves WEATHER_CITY blank, do an explicit IP-geolocation lookup first
+# and pass the city name to wttr.in so we get a proper "Berlin: ☀ +21°C"
+# line instead of "53.001100,28.006500: ☀ +21°C".
 cache_update_weather() {
     [[ "${WEATHER_ENABLED:-false}" == "true" ]] || { cache_write "weather" ""; return; }
     have curl || { cache_write "weather" ""; return; }
+
     local city="${WEATHER_CITY:-}"
+    if [[ -z "$city" ]]; then
+        # Try a few free IP→city services in order. Each is short and
+        # doesn't require an API key.
+        city=$(curl -fsS --max-time 4 https://ipapi.co/city/ 2>/dev/null || true)
+        if [[ -z "$city" || "$city" == *"error"* ]]; then
+            city=$(curl -fsS --max-time 4 https://ifconfig.co/city 2>/dev/null || true)
+        fi
+        if [[ -z "$city" ]]; then
+            # ipinfo.io is rate-limited but worth one shot
+            city=$(curl -fsS --max-time 4 https://ipinfo.io/city 2>/dev/null || true)
+        fi
+        # Strip any whitespace / control chars
+        city="${city//[$'\r\n\t']/}"
+        city="${city## }"; city="${city%% }"
+    fi
+
     local out
-    # Format: "City: 21°C, Sunny"  (wttr.in supports a custom format)
-    out=$(curl -fsS --max-time 5 "https://wttr.in/${city}?format=%l:+%c+%t,+%C" 2>/dev/null || true)
+    if [[ -n "$city" ]]; then
+        out=$(curl -fsS --max-time 5 "https://wttr.in/${city// /+}?format=%l:+%c+%t,+%C" 2>/dev/null || true)
+    else
+        # Last-resort fallback: ask wttr without a location and strip the
+        # coordinates prefix wttr returns by default.
+        out=$(curl -fsS --max-time 5 "https://wttr.in/?format=%c+%t,+%C" 2>/dev/null || true)
+    fi
     cache_write "weather" "${out:-unavailable}"
 }
 

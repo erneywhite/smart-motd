@@ -40,13 +40,28 @@ _wiz_cols() {
 
 _wiz_show_cursor() { printf '\e[?25h' >/dev/tty 2>/dev/null || true; }
 _wiz_hide_cursor() { printf '\e[?25l' >/dev/tty 2>/dev/null || true; }
+
+# Full screen clear — call ONCE at entry to a new page. In-loop redraws
+# use _wiz_home (no clear) + per-line clear-eol + final clear-tail to
+# avoid flashing.
 _wiz_clear()       { printf '\e[2J\e[H' >/dev/tty 2>/dev/null || true; }
+_wiz_home()        { printf '\e[H' >/dev/tty 2>/dev/null || true; }
+_wiz_clear_tail()  { printf '\e[J' >/dev/tty 2>/dev/null || true; }
 
 trap '_wiz_show_cursor' EXIT INT TERM
 
-# Internal: print to terminal (not stdout)
-_p()   { printf '%b' "$1" >/dev/tty; }
-_pln() { printf '%b\n' "$1" >/dev/tty; }
+# Internal: print to terminal (not stdout). \e[K (clear from cursor to
+# end of line) is injected after every \n in the argument, so that any
+# leftover content from a previous render gets wiped without a full
+# screen clear.
+_p() {
+    local text="${1//\\n/\\e[K\\n}"
+    printf '%b' "$text" >/dev/tty
+}
+_pln() {
+    local text="${1//\\n/\\e[K\\n}"
+    printf '%b\e[K\n' "$text" >/dev/tty
+}
 
 # Repeat a character N times.
 _repeat() {
@@ -75,7 +90,7 @@ wizard_init() {
 _wiz_header() {
     local title="$1"
     local cols; cols=$(_wiz_cols)
-    _wiz_clear
+    _wiz_home
 
     local step=""
     if (( WIZ_STEP > 0 )); then
@@ -184,6 +199,7 @@ wizard_yesno() {
         done
         _wiz_footer "↑/↓ or y/n · Enter to confirm"
 
+        _wiz_clear_tail
         IFS= read -rsn1 key </dev/tty || break
         case "$key" in
             $'\e')
@@ -232,6 +248,7 @@ wizard_select() {
         done
         _wiz_footer "↑/↓ navigate · 1-9 jump · Enter to confirm"
 
+        _wiz_clear_tail
         IFS= read -rsn1 key </dev/tty || break
         case "$key" in
             $'\e')
@@ -290,6 +307,7 @@ wizard_select_preview() {
 
         _wiz_footer "↑/↓ navigate · Enter to confirm"
 
+        _wiz_clear_tail
         IFS= read -rsn1 key </dev/tty || break
         case "$key" in
             $'\e')
@@ -349,6 +367,7 @@ wizard_multiselect() {
         done
         _wiz_footer "↑/↓ move · Space toggle · a all · n none · Enter confirm"
 
+        _wiz_clear_tail
         IFS= read -rsn1 key </dev/tty || break
         case "$key" in
             $'\e')
@@ -399,6 +418,7 @@ wizard_list() {
         fi
         _wiz_footer "[a] add · [d] delete last · [c] clear · Enter to finish"
 
+        _wiz_clear_tail
         IFS= read -rsn1 key </dev/tty || break
         case "$key" in
             a|A)

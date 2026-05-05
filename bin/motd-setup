@@ -224,7 +224,29 @@ wizard_intro "$(_l "Welcome to smart-motd" "Добро пожаловать в s
 
 # --- Section selector (multiselect) ---
 
-_pre() { case "$1" in true|auto) echo 1 ;; *) echo 0 ;; esac; }
+# Detect what's actually installed so 'auto' toggles only get pre-checked
+# when the underlying tool is present. Without this, fresh installs pre-check
+# Docker/Podman/Kubernetes/SMART/temperature even on hosts that don't have
+# them, only for those sections to silently no-op at render time.
+have() { command -v "$1" >/dev/null 2>&1; }
+have docker          && HAS_DOCKER=true       || HAS_DOCKER=false
+have podman          && HAS_PODMAN=true       || HAS_PODMAN=false
+have kubectl         && HAS_KUBECTL=true      || HAS_KUBECTL=false
+have smartctl        && HAS_SMARTCTL=true     || HAS_SMARTCTL=false
+if have sensors || [[ -d /sys/class/thermal ]]; then HAS_THERMAL=true; else HAS_THERMAL=false; fi
+
+_pre()      { case "$1" in true|auto) echo 1 ;; *) echo 0 ;; esac; }
+# Smarter version: 'auto' is only pre-checked when the underlying tool is
+# detected. Explicit true / false values from existing config still win.
+_pre_auto() {
+    local val="$1" available="$2"
+    case "$val" in
+        true) echo 1 ;;
+        false) echo 0 ;;
+        auto)  [[ "$available" == "true" ]] && echo 1 || echo 0 ;;
+        *) echo 0 ;;
+    esac
+}
 
 mapfile -t selected_sections < <(wizard_multiselect \
     "$(_l "Sections to enable" "Включаемые секции")" \
@@ -242,11 +264,11 @@ mapfile -t selected_sections < <(wizard_multiselect \
     "$(_pre "$NETWORK_ENABLED")$(_l "Network (interfaces + public IP)" "Сеть (интерфейсы + публичный IP)")" \
     "$(_pre "$SSL_ENABLED")$(_l "SSL certificates" "SSL-сертификаты")" \
     "$(_pre "$SECURITY_ENABLED")$(_l "Security (failed SSH + fail2ban)" "Безопасность (failed SSH + fail2ban)")" \
-    "$(_pre "$TEMPERATURE_ENABLED")$(_l "CPU temperature" "Температура CPU")" \
-    "$(_pre "$SMART_ENABLED")$(_l "Disk SMART status" "Состояние дисков (SMART)")" \
-    "$(_pre "$DOCKER_ENABLED")$(_l "Docker containers" "Docker-контейнеры")" \
-    "$(_pre "$PODMAN_ENABLED")$(_l "Podman containers" "Podman-контейнеры")" \
-    "$(_pre "$KUBERNETES_ENABLED")$(_l "Kubernetes summary" "Kubernetes (краткая сводка)")" \
+    "$(_pre_auto "$TEMPERATURE_ENABLED" "$HAS_THERMAL")$(_l "CPU temperature" "Температура CPU")" \
+    "$(_pre_auto "$SMART_ENABLED" "$HAS_SMARTCTL")$(_l "Disk SMART status" "Состояние дисков (SMART)")" \
+    "$(_pre_auto "$DOCKER_ENABLED" "$HAS_DOCKER")$(_l "Docker containers" "Docker-контейнеры")" \
+    "$(_pre_auto "$PODMAN_ENABLED" "$HAS_PODMAN")$(_l "Podman containers" "Podman-контейнеры")" \
+    "$(_pre_auto "$KUBERNETES_ENABLED" "$HAS_KUBECTL")$(_l "Kubernetes summary" "Kubernetes (краткая сводка)")" \
     "$(_pre "$DIRECTORIES_ENABLED")$(_l "Monitored directories" "Отслеживаемые каталоги")" \
     "$(_pre "$LASTLOGIN_ENABLED")$(_l "Recent logins" "Недавние логины")" \
     "$(_pre "$WEATHER_ENABLED")$(_l "Weather (wttr.in)" "Погода (wttr.in)")" \
@@ -319,7 +341,9 @@ theme_choice=$(wizard_select_preview \
 "Choose the rule characters and section heading style for the banner. Live preview below shows how it will look." \
 "Выберите символы рамок и стиль заголовков. Предпросмотр снизу покажет результат.")" \
     0 preview_theme -- \
-    "classic" "slim" "heavy" "double" "dotted" "ascii" "arrows" "stars" "wave" "block" "pipes" "retro" "compact")
+    "classic" "slim" "heavy" "double" "dotted" "ascii" "arrows" "stars" \
+    "wave" "block" "pipes" "retro" "compact" "chevrons" "bullets" "cross" \
+    "plus" "cosmic" "sharp" "zen")
 THEME="$theme_choice"
 unset THEME_BANNER_CHAR THEME_DIVIDER_CHAR THEME_KV_SEPARATOR THEME_HEADING_STYLE
 apply_theme
@@ -332,7 +356,8 @@ color_choice=$(wizard_select_preview \
 "Sets the accent color used by section headings. Status colors (green/yellow/red) stay intact." \
 "Задаёт основной цвет заголовков секций. Цвета статусов (зелёный/жёлтый/красный) не меняются.")" \
     0 preview_color_theme -- \
-    "default" "ocean" "forest" "sunset" "amber" "mono")
+    "default" "ocean" "forest" "sunset" "amber" "mono" \
+    "matrix" "neon" "coral" "mint" "sky" "gold" "snow")
 COLOR_THEME="$color_choice"
 apply_color_theme
 
@@ -384,26 +409,133 @@ fi
 
 # --- System ---
 
-if [[ "$SYSTEM_ENABLED" == "true" ]]; then
-    mapfile -t SYSTEM_DISK_PATHS < <(wizard_list \
-        "$(_l "Disk mountpoints to display" "Точки монтирования дисков")" \
-        "$(_l \
-"Each entry shows '<used> / <total> (<pct>% used)'. Common picks: /, /var, /home, /srv." \
-"Для каждой точки покажется '<занято> / <всего> (<%> used)'. Типичные варианты: /, /var, /home, /srv.")" \
-        "${SYSTEM_DISK_PATHS[@]}")
+configure_disks_page() {
+    local detected=() seen mp existing pre dup mp_entry multi=() selected_mps=()
+    # Detect "real" mountpoints — skip pseudo-fs and small ones.
+    while IFS= read -r mp; do
+        [[ -z "$mp" ]] && continue
+        case "$mp" in
+            /proc*|/sys*|/dev*|/run*|/snap*|/var/lib/docker/*|/boot/efi*) continue ;;
+        esac
+        seen=0
+        for existing in "${detected[@]}"; do
+            [[ "$existing" == "$mp" ]] && seen=1 && break
+        done
+        (( seen )) || detected+=("$mp")
+    done < <(df -P --output=target 2>/dev/null | tail -n +2 | sort -u)
+
+    # Build multiselect: pre-check anything already in SYSTEM_DISK_PATHS.
+    for mp in "${detected[@]}"; do
+        pre=0
+        for existing in "${SYSTEM_DISK_PATHS[@]}"; do
+            [[ "$existing" == "$mp" ]] && pre=1 && break
+        done
+        multi+=("${pre}${mp}")
+    done
+    # Surface previously-configured paths not detected (rare — mountpoint went away)
+    for existing in "${SYSTEM_DISK_PATHS[@]}"; do
+        dup=0
+        for mp in "${detected[@]}"; do
+            [[ "$mp" == "$existing" ]] && dup=1 && break
+        done
+        (( dup )) || multi+=("1${existing} (missing)")
+    done
+
+    SYSTEM_DISK_PATHS=()
+    if [[ ${#multi[@]} -gt 0 ]]; then
+        mapfile -t selected_mps < <(wizard_multiselect \
+            "$(_l "Disk mountpoints to display" "Точки монтирования дисков")" \
+            "$(_l \
+"Detected from df. Pick mountpoints to display in System status. Each shows '<used> / <total> (<pct>% used)'." \
+"Список собран через df. Отметьте точки монтирования для показа в System status. Каждая покажет '<занято> / <всего> (<%> used)'.")" \
+            -- "${multi[@]}")
+        for mp_entry in "${selected_mps[@]}"; do
+            SYSTEM_DISK_PATHS+=("${mp_entry% (*}")
+        done
+    fi
     [[ ${#SYSTEM_DISK_PATHS[@]} -eq 0 ]] && SYSTEM_DISK_PATHS=("/")
+}
+
+if [[ "$SYSTEM_ENABLED" == "true" ]]; then
+    configure_disks_page
 fi
 
 # --- Services ---
 
-if [[ "$SERVICES_ENABLED" == "true" ]]; then
-    mapfile -t SERVICES_LIST < <(wizard_list \
-        "$(_l "systemd units to monitor" "systemd-юниты для отслеживания")" \
+# Wrap in a function so we can use `local` cleanly.
+configure_services_page() {
+    local candidates=() unit existing found cur c entry state pre in_candidates dup multi=() selected_svcs=() custom_svcs=()
+
+    if command -v systemctl >/dev/null 2>&1; then
+        while IFS= read -r unit; do
+            unit="${unit%.service}"
+            [[ -z "$unit" ]] && continue
+            case "$unit" in
+                systemd-*|dbus|polkit*|snap.*|snapd*|udev*|user@*|getty@*|*\.scope|init.scope|systemd*|networkd-*|resolved*)
+                    continue ;;
+                *@.service|*@*) continue ;;
+            esac
+            found=0
+            for existing in "${candidates[@]}"; do
+                [[ "$existing" == "$unit" ]] && found=1 && break
+            done
+            (( found )) || candidates+=("$unit")
+        done < <(
+            { systemctl list-unit-files --type=service --state=enabled --no-legend --no-pager --plain 2>/dev/null
+              systemctl list-units --type=service --state=active --no-legend --no-pager --plain 2>/dev/null
+            } | awk '{print $1}' | sort -u
+        )
+    fi
+
+    for c in "${candidates[@]}"; do
+        state=$(systemctl is-active "$c" 2>/dev/null || echo unknown)
+        pre=0
+        for cur in "${SERVICES_LIST[@]}"; do
+            [[ "$cur" == "$c" ]] && pre=1 && break
+        done
+        multi+=("${pre}${c} (${state})")
+    done
+    # Surface previously-configured units that aren't in the auto list.
+    for cur in "${SERVICES_LIST[@]}"; do
+        in_candidates=0
+        for c in "${candidates[@]}"; do
+            [[ "$cur" == "$c" ]] && in_candidates=1 && break
+        done
+        (( in_candidates )) || multi+=("1${cur} (custom)")
+    done
+
+    SERVICES_LIST=()
+    if [[ ${#multi[@]} -gt 0 ]]; then
+        mapfile -t selected_svcs < <(wizard_multiselect \
+            "$(_l "Pick services to monitor" "Выберите сервисы для отслеживания")" \
+            "$(_l \
+"Detected from systemctl. Pick everything you want shown on the MOTD; you can add more on the next page if a unit isn't listed." \
+"Список собран через systemctl. Отметьте сервисы для показа в MOTD; на следующей странице можно дописать вручную, если чего-то нет.")" \
+            -- "${multi[@]}")
+        for entry in "${selected_svcs[@]}"; do
+            SERVICES_LIST+=("${entry% (*}")
+        done
+    fi
+
+    mapfile -t custom_svcs < <(wizard_list \
+        "$(_l "Additional services" "Дополнительные сервисы")" \
         "$(_l \
-"Each shows active/failed/inactive with color. Add unit names without .service (e.g. nginx, postgresql, redis-server)." \
-"Для каждого покажется active/failed/inactive с цветом. Имена без .service (например nginx, postgresql, redis-server).")" \
-        "${SERVICES_LIST[@]}")
+"Optional. Add unit names manually (without .service) for anything not auto-detected above. Leave empty to skip." \
+"Опционально. Допишите имена юнитов вручную (без .service), если какого-то нет в списке выше. Можно оставить пустым.")" \
+        )
+    for c in "${custom_svcs[@]}"; do
+        dup=0
+        for existing in "${SERVICES_LIST[@]}"; do
+            [[ "$existing" == "$c" ]] && dup=1 && break
+        done
+        (( dup )) || SERVICES_LIST+=("$c")
+    done
+
     [[ ${#SERVICES_LIST[@]} -eq 0 ]] && SERVICES_ENABLED=false
+}
+
+if [[ "$SERVICES_ENABLED" == "true" ]]; then
+    configure_services_page
 fi
 
 # --- SSL ---
