@@ -137,8 +137,9 @@ print_summary() {
     printf '  %sCommands%s\n' "${C_BOLD}" "${C_RESET}"
     printf '    %ssmart-motd show%s             preview the MOTD\n' "${C_BRIGHT_CYAN}" "${C_RESET}"
     printf '    %ssudo smart-motd setup%s       re-run the wizard\n' "${C_BRIGHT_CYAN}" "${C_RESET}"
-    printf '    %ssudo smart-motd update-cache%s force a cache refresh\n' "${C_BRIGHT_CYAN}" "${C_RESET}"
-    printf '    %ssudo smart-motd uninstall%s    remove smart-motd\n' "${C_BRIGHT_CYAN}" "${C_RESET}"
+    printf '    %ssmart-motd doctor%s           diagnose the install\n' "${C_BRIGHT_CYAN}" "${C_RESET}"
+    printf '    %ssudo smart-motd upgrade%s     pull the latest release\n' "${C_BRIGHT_CYAN}" "${C_RESET}"
+    printf '    %ssudo smart-motd uninstall%s   remove smart-motd\n' "${C_BRIGHT_CYAN}" "${C_RESET}"
     printf '\n'
 }
 
@@ -206,6 +207,7 @@ mkdir -p "$PREFIX/lib" "$PREFIX/bin" "$PREFIX/lib/sections" "$CONFIG_DIR" "$CACH
 install -m 0755 "$WORK"/bin/motd-generate     "$PREFIX/bin/motd-generate"
 install -m 0755 "$WORK"/bin/motd-cache-update "$PREFIX/bin/motd-cache-update"
 install -m 0755 "$WORK"/bin/motd-setup        "$PREFIX/bin/motd-setup"
+install -m 0755 "$WORK"/bin/motd-doctor       "$PREFIX/bin/motd-doctor"
 install -m 0755 "$WORK"/bin/motd-uninstall    "$PREFIX/bin/motd-uninstall"
 install -m 0755 "$WORK"/bin/smart-motd        "$BIN_DIR/smart-motd"
 install -m 0644 "$WORK"/lib/common.sh         "$PREFIX/lib/common.sh"

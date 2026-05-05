@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# smart-motd doctor: walk through the install and report what's healthy,
+# what looks off, and what's broken. Exit 0 if all green, 1 if any errors.
+
+set -u
+
+SMART_MOTD_PREFIX="${SMART_MOTD_PREFIX:-/usr/local/lib/smart-motd}"
+SMART_MOTD_CONFIG="${SMART_MOTD_CONFIG:-/etc/smart-motd/config.conf}"
+SMART_MOTD_CACHE_DIR="${SMART_MOTD_CACHE_DIR:-/var/cache/smart-motd}"
+
+# shellcheck source=../lib/common.sh
+. "${SMART_MOTD_PREFIX}/lib/common.sh"
+SMART_MOTD_FORCE_COLOR=1
+COLORS_ENABLED=true
+_color_init
+detect_distro
+
+ok=0; warn=0; err=0
+
+_ok()    { printf '  %s✓%s %s\n' "${C_GREEN}" "${C_RESET}" "$1"; ok=$((ok + 1)); }
+_warn()  { printf '  %s!%s %s\n' "${C_YELLOW}" "${C_RESET}" "$1"; warn=$((warn + 1)); }
+_err()   { printf '  %s✗%s %s\n' "${C_RED}"   "${C_RESET}" "$1"; err=$((err + 1)); }
+_note()  { printf '    %s%s%s\n' "${C_DIM}" "$1" "${C_RESET}"; }
+
+VER=$(cat "$SMART_MOTD_PREFIX/VERSION" 2>/dev/null | tr -d ' \r\n')
+
+printf '\n%ssmart-motd doctor%s\n' "${C_BOLD}" "${C_RESET}"
+printf '%sInstalled v%s on %s (%s family)%s\n\n' \
+    "${C_DIM}" "${VER:-?}" "$DISTRO_ID" "$DISTRO_FAMILY" "${C_RESET}"
+
+# 1. Runtime files
+if [[ -x "$SMART_MOTD_PREFIX/bin/motd-generate" ]]; then
+    _ok "Runtime present at $SMART_MOTD_PREFIX"
+else
+    _err "Runtime missing — reinstall: sudo smart-motd upgrade"
+fi
+
+# 2. Config
+if [[ -r "$SMART_MOTD_CONFIG" ]]; then
+    if bash -n "$SMART_MOTD_CONFIG" 2>/dev/null; then
+        _ok "Config parses cleanly: $SMART_MOTD_CONFIG"
+    else
+        _err "Config has syntax errors — run: bash -n $SMART_MOTD_CONFIG"
+    fi
+else
+    _warn "Config missing — run: sudo smart-motd setup"
+fi
+
+# 3. Cache directory + files
+if [[ -d "$SMART_MOTD_CACHE_DIR" ]]; then
+    cnt=$(find "$SMART_MOTD_CACHE_DIR" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$cnt" -gt 0 ]]; then
+        _ok "Cache populated ($cnt file(s) in $SMART_MOTD_CACHE_DIR)"
+    else
+        _warn "Cache directory empty — run: sudo smart-motd update-cache"
+    fi
+else
+    _err "Cache directory missing: $SMART_MOTD_CACHE_DIR"
+fi
+
+# 4. Distro hook
+case "$DISTRO_FAMILY" in
+    debian)
+        if [[ -x /etc/update-motd.d/01-smart-motd ]]; then
+            _ok "update-motd.d hook installed: /etc/update-motd.d/01-smart-motd"
+        else
+            _err "update-motd.d hook missing — reinstall: sudo smart-motd upgrade"
+        fi
+        ;;
+    *)
+        if command -v systemctl >/dev/null 2>&1 \
+           && systemctl is-enabled smart-motd-render.timer >/dev/null 2>&1; then
+            _ok "smart-motd-render.timer enabled (writes /etc/motd)"
+        elif crontab -l 2>/dev/null | grep -q 'smart-motd/bin/motd-generate'; then
+            _ok "Render cron entry present (no systemd)"
+        else
+            _err "No render mechanism wired — reinstall: sudo smart-motd upgrade"
+        fi
+        ;;
+esac
+
+# 5. Cache refresh job
+if command -v systemctl >/dev/null 2>&1; then
+    if systemctl is-enabled smart-motd-cache.timer >/dev/null 2>&1; then
+        if systemctl is-active smart-motd-cache.timer >/dev/null 2>&1; then
+            _ok "smart-motd-cache.timer enabled and active"
+        else
+            _warn "smart-motd-cache.timer enabled but not active — try: systemctl restart smart-motd-cache.timer"
+        fi
+        # Last cache run state
+        last_state=$(systemctl show smart-motd-cache.service -p Result --value 2>/dev/null)
+        if [[ "$last_state" == "success" ]]; then
+            _ok "Last cache update: success"
+        elif [[ -n "$last_state" ]] && [[ "$last_state" != "success" ]]; then
+            _warn "Last cache update result: ${last_state} — try: systemctl status smart-motd-cache.service"
+        fi
+    elif crontab -l 2>/dev/null | grep -q 'motd-cache-update'; then
+        _ok "Cache cron entry present (no systemd)"
+    else
+        _err "No cache refresh mechanism — reinstall: sudo smart-motd upgrade"
+    fi
+fi
+
+# 6. /run/motd.dynamic freshness (Debian only — that's where pam_motd reads it)
+if [[ "$DISTRO_FAMILY" == "debian" ]]; then
+    if [[ -f /run/motd.dynamic ]]; then
+        mtime=$(stat -c %Y /run/motd.dynamic 2>/dev/null || stat -f %m /run/motd.dynamic 2>/dev/null)
+        now=$(date +%s)
+        diff=$((now - mtime))
+        if (( diff < 600 )); then
+            _ok "/run/motd.dynamic refreshed ${diff}s ago"
+        elif (( diff < 1800 )); then
+            _warn "/run/motd.dynamic ${diff}s old — cache job runs every 5 min, this is borderline"
+        else
+            _err "/run/motd.dynamic ${diff}s old — cache job may be broken; check 'systemctl status smart-motd-cache'"
+        fi
+    else
+        _warn "/run/motd.dynamic not present — login banner won't show until next refresh"
+    fi
+fi
+
+# 7. Generator dry-run
+if "$SMART_MOTD_PREFIX/bin/motd-generate" >/dev/null 2>&1; then
+    _ok "Generator produced output without errors"
+else
+    rc=$?
+    _err "Generator failed (exit $rc) — run 'smart-motd show' to see error output"
+fi
+
+# 8. GitHub reachable (so 'smart-motd version' / 'upgrade' works)
+if command -v curl >/dev/null 2>&1; then
+    if curl -fsS --max-time 4 -o /dev/null https://api.github.com 2>/dev/null; then
+        _ok "GitHub reachable (upgrade check works)"
+    else
+        _warn "GitHub unreachable — 'smart-motd version' update check will be skipped"
+    fi
+fi
+
+# Summary
+printf '\n  %sSummary:%s %s%d OK%s · %s%d warning(s)%s · %s%d error(s)%s\n\n' \
+    "${C_BOLD}" "${C_RESET}" \
+    "${C_GREEN}"  "$ok"   "${C_RESET}" \
+    "${C_YELLOW}" "$warn" "${C_RESET}" \
+    "${C_RED}"    "$err"  "${C_RESET}"
+
+(( err > 0 )) && exit 1
+exit 0

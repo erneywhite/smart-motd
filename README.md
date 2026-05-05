@@ -4,9 +4,10 @@ A customizable, modular **MOTD** (message of the day) for Linux servers — the 
 
 Cross-distro (Debian / Ubuntu / RHEL / CentOS / Rocky / Alma / Fedora / Arch / openSUSE / Alpine), pure-bash, no runtime dependencies beyond what your distro already ships. One `curl … | sudo bash`, a paged interactive wizard with live previews, and you're done.
 
+[![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v0.4.0-brightgreen)
+![Version](https://img.shields.io/badge/version-v0.5.0-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE%20%7C%20Alpine-blue)
 
 ## Preview
@@ -105,8 +106,13 @@ sudo smart-motd setup          # re-run the interactive wizard
 sudo smart-motd update-cache   # refresh cached values immediately
 sudo smart-motd edit           # open the config in $EDITOR
 smart-motd status              # show install paths and cache freshness
+smart-motd doctor              # diagnose the install (checks hooks/timers/freshness)
+smart-motd version             # show installed version + check for updates
+sudo smart-motd upgrade        # pull and install the latest release
 sudo smart-motd uninstall      # remove smart-motd
 ```
+
+If the login banner ever stops looking right, `smart-motd doctor` runs through every wired component (config, cache files, distro hook, systemd timers, `/run/motd.dynamic` freshness, generator dry-run, GitHub reachability) and reports each as `✓` / `!` / `✗` with a hint on how to fix it.
 
 ## What it shows
 
@@ -129,6 +135,9 @@ Each section is independent and can be turned on/off in the config (or via the w
 | **Docker** | Running / total containers + per-container status | Detects `healthy` / `unhealthy` |
 | **Podman** | Same shape as Docker | |
 | **Kubernetes** | Context, ready nodes, namespace count | Skips silently if no cluster reachable |
+| **VPN** | WireGuard interfaces (peers + handshakes), OpenVPN daemons | Cached (wg requires root) |
+| **Time sync** | NTP server, offset, sync state | `timedatectl` / `chronyc` / `ntpq` |
+| **Storage arrays** | mdadm RAID + ZFS pools | Color-coded by health |
 | **Directories** | Custom labeled paths with sizes | E.g. backups, big project dirs |
 | **Recent logins** | Last N successful logins | |
 | **Weather** | One-line wttr.in summary | Off by default; auto-detects your city via IP |
@@ -255,10 +264,14 @@ Adding a new theme is a `case` arm in [`lib/common.sh`](lib/common.sh) inside `a
 
 ## Changelog
 
-- **v0.4.0** — Flicker-free wizard. Service / mountpoint / weather-city autodiscover. Seven new themes (chevrons, bullets, cross, plus, cosmic, sharp, zen) and seven new color palettes (matrix, neon, coral, mint, sky, gold, snow). The first multiselect no longer pre-checks tool-dependent sections (Docker/Podman/Kubernetes/SMART/temperature) on hosts where those tools aren't installed.
-- **v0.3.1** — Fix `/run/motd.dynamic` staleness on Ubuntu (login banner wasn't refreshing). Fix `services.sh` bad-substitution crash. Theme + KV-separator persistence across re-runs. Setup pages reordered so previews show the user's actual text.
-- **v0.3.0** — Force colors at SSH login. Cache the four heaviest sections (security, docker, podman, kubernetes). Seven additional themes. Bilingual wizard (EN / RU).
-- **v0.2.0** — Paged interactive wizard with live previews. Theme + color theme system.
+See [CHANGELOG.md](CHANGELOG.md) for the full history.
+
+Highlights:
+
+- **v0.5.0** — `smart-motd doctor` diagnostic command. New sections: VPN (WireGuard / OpenVPN), Time sync (NTP), Storage arrays (mdadm / ZFS).
+- **v0.4.x** — Paged wizard with viewport scrolling, 20 themes, 13 color palettes, RU translations, `smart-motd upgrade`, Ctrl+C exits cleanly.
+- **v0.3.x** — Login color force, cache the four heaviest sections (security/docker/podman/k8s), bilingual wizard.
+- **v0.2.0** — Paged interactive wizard with live previews; theme system.
 - **v0.1.0** — Initial cross-distro release.
 
 ## License

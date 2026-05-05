@@ -377,6 +377,65 @@ qstr() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 
 # cache_kv_load is defined in common.sh and re-used here.
 
+# ---- VPN tunnels (WireGuard + OpenVPN) ----
+# WireGuard requires root for `wg show`, which is why we cache (this job
+# runs as root via systemd; the on-login generator may not be).
+# OpenVPN: just the active systemd unit count is cheap, but we cache it
+# alongside for consistency.
+# Output (one line per tunnel):
+#   wg|<iface>|<active_peers>|<total_peers>
+#   openvpn|<unit-name-stripped>|<active|inactive>|
+cache_update_vpn() {
+    local out="" iface unit
+    if have wg; then
+        local now active total ts pubkey
+        now=$(date +%s)
+        while IFS= read -r iface; do
+            [[ -z "$iface" ]] && continue
+            active=0; total=0
+            while IFS=$'\t' read -r pubkey ts; do
+                [[ -z "$pubkey" ]] && continue
+                total=$((total + 1))
+                # Active = handshake within last 3 minutes (default keepalive timing)
+                if [[ "$ts" =~ ^[0-9]+$ ]] && (( ts > 0 )) && (( now - ts < 180 )); then
+                    active=$((active + 1))
+                fi
+            done < <(wg show "$iface" latest-handshakes 2>/dev/null)
+            out+="wg|${iface}|${active}|${total}"$'\n'
+        done < <(wg show interfaces 2>/dev/null | tr ' ' '\n')
+    fi
+    if have systemctl; then
+        local pattern state name
+        while IFS= read -r unit; do
+            [[ -z "$unit" ]] && continue
+            state=$(systemctl is-active "$unit" 2>/dev/null || echo unknown)
+            # Strip ".service" and "openvpn-server@" / "openvpn@" / "openvpn-client@" prefix
+            name="${unit%.service}"
+            name="${name#openvpn-server@}"
+            name="${name#openvpn-client@}"
+            name="${name#openvpn@}"
+            out+="openvpn|${name}|${state}|"$'\n'
+        done < <(systemctl list-units --all --no-legend --plain --type=service 2>/dev/null \
+                   | awk '{print $1}' \
+                   | grep -E '^openvpn(-server|-client)?@?[^.]*\.service$')
+    fi
+    cache_write "vpn" "$out"
+}
+
+# ---- ZFS pools ----
+# Output (one line per pool): pool|state|capacity
+cache_update_zpool() {
+    have zpool || { cache_write "zpool" ""; return; }
+    local out="" pool state cap
+    while IFS= read -r pool; do
+        [[ -z "$pool" ]] && continue
+        state=$(zpool list -H -o health "$pool" 2>/dev/null)
+        cap=$(zpool list -H -o capacity "$pool" 2>/dev/null)
+        out+="${pool}|${state:-?}|${cap:-?}"$'\n'
+    done < <(zpool list -H -o name 2>/dev/null)
+    cache_write "zpool" "$out"
+}
+
 # ---- driver ----
 cache_update_all() {
     detect_distro
@@ -390,4 +449,6 @@ cache_update_all() {
     cache_update_docker
     cache_update_podman
     cache_update_kubernetes
+    cache_update_vpn
+    cache_update_zpool
 }

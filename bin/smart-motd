@@ -18,6 +18,7 @@ Commands:
   update-cache   Refresh cached values (updates count, SSL, public IP, …).
   edit           Open the config file in \$EDITOR.
   status         Show install paths, distro detection, cache freshness.
+  doctor         Diagnose the install (check hooks, timers, freshness).
   version        Show installed version (and check for updates).
   upgrade        Re-run the installer to upgrade to the latest release.
   uninstall      Remove smart-motd from this system.
@@ -54,6 +55,7 @@ case "$cmd" in
     show)         exec "${SMART_MOTD_PREFIX}/bin/motd-generate" ;;
     update-cache) exec "${SMART_MOTD_PREFIX}/bin/motd-cache-update" ;;
     setup)        exec "${SMART_MOTD_PREFIX}/bin/motd-setup" ;;
+    doctor)       exec "${SMART_MOTD_PREFIX}/bin/motd-doctor" ;;
     edit)         exec "${EDITOR:-vi}" /etc/smart-motd/config.conf ;;
     uninstall)    exec "${SMART_MOTD_PREFIX}/bin/motd-uninstall" ;;
     status)

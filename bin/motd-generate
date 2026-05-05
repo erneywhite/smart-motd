@@ -47,14 +47,17 @@ KUBERNETES_ENABLED=auto
 DIRECTORIES_ENABLED=false
 LASTLOGIN_ENABLED=true
 WEATHER_ENABLED=false
+NTP_ENABLED=auto
+RAID_ENABLED=auto
+VPN_ENABLED=auto
 FOOTER_ENABLED=true
 
 SECTION_ORDER=(
     header welcome warning
-    system maintenance updates
+    system maintenance updates ntp
     services network ssl
-    security temperature smart
-    docker podman kubernetes
+    security temperature smart raid
+    docker podman kubernetes vpn
     directories lastlogin weather
     footer
 )

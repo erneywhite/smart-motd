@@ -69,6 +69,9 @@ KUBERNETES_ENABLED=auto
 DIRECTORIES_ENABLED=false
 LASTLOGIN_ENABLED=true
 WEATHER_ENABLED=false
+NTP_ENABLED=auto
+RAID_ENABLED=auto
+VPN_ENABLED=auto
 FOOTER_ENABLED=true
 
 EXISTING_CONFIG=false
@@ -248,6 +251,26 @@ have podman          && HAS_PODMAN=true       || HAS_PODMAN=false
 have kubectl         && HAS_KUBECTL=true      || HAS_KUBECTL=false
 have smartctl        && HAS_SMARTCTL=true     || HAS_SMARTCTL=false
 if have sensors || [[ -d /sys/class/thermal ]]; then HAS_THERMAL=true; else HAS_THERMAL=false; fi
+# VPN detected if wg or any openvpn-related systemd unit exists
+HAS_VPN=false
+if have wg; then
+    HAS_VPN=true
+elif have systemctl && systemctl list-units --all --no-legend --plain --type=service 2>/dev/null \
+        | awk '{print $1}' | grep -qE '^openvpn(-server|-client)?@?[^.]*\.service$'; then
+    HAS_VPN=true
+fi
+# RAID detected if any md array OR zpool tool present
+HAS_RAID=false
+if [[ -r /proc/mdstat ]] && grep -q '^md' /proc/mdstat 2>/dev/null; then
+    HAS_RAID=true
+elif have zpool; then
+    HAS_RAID=true
+fi
+# NTP — almost always available on modern Linux (systemd-timesyncd / chrony / ntpd)
+HAS_NTP=false
+if have timedatectl || have chronyc || have ntpq; then
+    HAS_NTP=true
+fi
 
 _pre()      { case "$1" in true|auto) echo 1 ;; *) echo 0 ;; esac; }
 # Smarter version: 'auto' is only pre-checked when the underlying tool is
@@ -283,6 +306,9 @@ mapfile -t selected_sections < <(wizard_multiselect \
     "$(_pre_auto "$DOCKER_ENABLED" "$HAS_DOCKER")$(_l "Docker containers" "Docker-контейнеры")" \
     "$(_pre_auto "$PODMAN_ENABLED" "$HAS_PODMAN")$(_l "Podman containers" "Podman-контейнеры")" \
     "$(_pre_auto "$KUBERNETES_ENABLED" "$HAS_KUBECTL")$(_l "Kubernetes summary" "Kubernetes (краткая сводка)")" \
+    "$(_pre_auto "${VPN_ENABLED:-auto}" "$HAS_VPN")$(_l "VPN tunnels (WireGuard / OpenVPN)" "VPN-туннели (WireGuard / OpenVPN)")" \
+    "$(_pre_auto "${NTP_ENABLED:-auto}" "$HAS_NTP")$(_l "Time sync (NTP / chrony / timesyncd)" "Синхронизация времени (NTP / chrony / timesyncd)")" \
+    "$(_pre_auto "${RAID_ENABLED:-auto}" "$HAS_RAID")$(_l "Storage arrays (mdadm / ZFS)" "Дисковые массивы (mdadm / ZFS)")" \
     "$(_pre "$DIRECTORIES_ENABLED")$(_l "Monitored directories" "Отслеживаемые каталоги")" \
     "$(_pre "$LASTLOGIN_ENABLED")$(_l "Recent logins" "Недавние логины")" \
     "$(_pre "$WEATHER_ENABLED")$(_l "Weather (wttr.in)" "Погода (wttr.in)")" \
@@ -295,6 +321,7 @@ SERVICES_ENABLED=false; NETWORK_ENABLED=false; SSL_ENABLED=false
 SECURITY_ENABLED=false; TEMPERATURE_ENABLED=false; SMART_ENABLED=false
 DOCKER_ENABLED=false; PODMAN_ENABLED=false; KUBERNETES_ENABLED=false
 DIRECTORIES_ENABLED=false; LASTLOGIN_ENABLED=false; WEATHER_ENABLED=false
+NTP_ENABLED=false; RAID_ENABLED=false; VPN_ENABLED=false
 
 for s in "${selected_sections[@]}"; do
     case "$s" in
@@ -313,6 +340,9 @@ for s in "${selected_sections[@]}"; do
         *Docker*)                                       DOCKER_ENABLED=auto ;;
         *Podman*)                                       PODMAN_ENABLED=auto ;;
         *Kubernetes*)                                   KUBERNETES_ENABLED=auto ;;
+        *VPN*)                                          VPN_ENABLED=auto ;;
+        *"Time sync"*|*"Синхронизация времени"*)         NTP_ENABLED=auto ;;
+        *"Storage arrays"*|*"Дисковые массивы"*)         RAID_ENABLED=auto ;;
         *directories*|*каталоги*)                       DIRECTORIES_ENABLED=true ;;
         *"Recent logins"*|*"Недавние логины"*)          LASTLOGIN_ENABLED=true ;;
         *Weather*|*Погода*)                             WEATHER_ENABLED=true ;;
@@ -709,8 +739,8 @@ TS=$(date '+%Y-%m-%d %H:%M:%S')
     echo
     echo "# ---- Section toggles ----"
     for s in HEADER WELCOME WARNING SYSTEM MAINTENANCE UPDATES SERVICES NETWORK SSL \
-             SECURITY TEMPERATURE SMART DOCKER PODMAN KUBERNETES DIRECTORIES \
-             LASTLOGIN WEATHER FOOTER; do
+             SECURITY TEMPERATURE SMART DOCKER PODMAN KUBERNETES VPN NTP RAID \
+             DIRECTORIES LASTLOGIN WEATHER FOOTER; do
         var="${s}_ENABLED"
         echo "${var}=${!var}"
     done

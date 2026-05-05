@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: shellcheck + bash syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -q shellcheck
+
+      - name: bash -n on every script
+        run: |
+          set -e
+          fail=0
+          while IFS= read -r f; do
+            if ! bash -n "$f"; then
+              echo "::error file=$f::bash syntax check failed"
+              fail=1
+            fi
+          done < <(find bin lib install.sh -type f \( -name '*.sh' -o ! -name '*.*' \) 2>/dev/null)
+          exit $fail
+
+      - name: shellcheck
+        run: |
+          set -e
+          # -e SC1091 — sourced files we don't include in the lint run
+          # -e SC2154 — many config-sourced variables look "undefined" to shellcheck
+          # -e SC2034 — some color/style vars look unused but are sourced into sections
+          shellcheck \
+            --shell=bash \
+            --severity=warning \
+            --exclude=SC1090,SC1091,SC2154,SC2034,SC2155 \
+            install.sh \
+            bin/motd-generate \
+            bin/motd-cache-update \
+            bin/motd-setup \
+            bin/motd-doctor \
+            bin/motd-uninstall \
+            bin/smart-motd \
+            lib/common.sh \
+            lib/cache.sh \
+            lib/wizard.sh \
+            lib/sections/*.sh
+
+  smoke:
+    name: render smoke test (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install smart-motd from local source
+        run: sudo bash install.sh --no-setup --source "$PWD"
+
+      - name: Run doctor
+        run: smart-motd doctor || true   # warn-level OK on a CI runner
+
+      - name: Render the MOTD
+        run: SMART_MOTD_FORCE_COLOR=1 smart-motd show
+
+      - name: Verify CLI commands
+        run: |
+          smart-motd help
+          smart-motd version
+          smart-motd status
