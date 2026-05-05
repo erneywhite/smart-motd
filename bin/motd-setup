@@ -108,14 +108,31 @@ write_array() {
 }
 
 # ---------- preview renderers ----------
+# All previews use the user's actual HEADER_TEXT (collected on the first
+# config page) so the preview matches what they will see at login.
+
+# Render the user's header text using the requested style. Style "spaced" by
+# default; pass "plain"/"upper"/"lower" to override.
+_preview_render_header() {
+    local style="${1:-${HEADER_SPACED:+spaced}}"
+    [[ -z "$style" ]] && style="plain"
+    local text="${HEADER_TEXT:-Smart MOTD}"
+    case "$style" in
+        spaced) printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "$(spaced_text "$text")" "${C_RESET}" ;;
+        upper)  printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "${text^^}" "${C_RESET}" ;;
+        lower)  printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "${text,,}" "${C_RESET}" ;;
+        plain|*)printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "$text"      "${C_RESET}" ;;
+    esac
+}
 
 preview_theme() {
     local name="$1"
     (
         THEME="$name"
+        unset THEME_BANNER_CHAR THEME_DIVIDER_CHAR THEME_KV_SEPARATOR THEME_HEADING_STYLE
         apply_theme
         section_thick_rule
-        printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "$(spaced_text "Smart MOTD")" "${C_RESET}"
+        _preview_render_header
         section_thick_rule
         section_heading "System status"
         kv "Hostname" "web-01.example.net"
@@ -140,12 +157,7 @@ preview_color_theme() {
 
 preview_header_style() {
     local style="$1"
-    case "$style" in
-        spaced) printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "$(spaced_text "Smart MOTD")" "${C_RESET}" ;;
-        plain)  printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "Smart MOTD" "${C_RESET}" ;;
-        upper)  printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "SMART MOTD" "${C_RESET}" ;;
-        lower)  printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "smart motd" "${C_RESET}" ;;
-    esac
+    _preview_render_header "$style"
     section_thick_rule
 }
 
@@ -271,7 +283,35 @@ for s in "${selected_sections[@]}"; do
     esac
 done
 
-# --- Theme picker ---
+# --- Header text (asked FIRST so subsequent previews can show it) ---
+
+if [[ "$HEADER_ENABLED" == "true" ]]; then
+    HEADER_TEXT=$(wizard_text \
+        "$(_l "Header text" "Текст заголовка")" \
+        "$(_l \
+"The big banner shown at the very top of every login. Usually your project or company name. The next pages will preview how it looks." \
+"Большой баннер сверху при каждом логине. Обычно — название проекта или компании. Следующие страницы покажут предпросмотр.")" \
+        "$HEADER_TEXT")
+
+    style_choice=$(wizard_select_preview \
+        "$(_l "Header style" "Стиль заголовка")" \
+        "$(_l "How the header text should be rendered. Preview below uses your text." "Как именно отображать текст. Предпросмотр снизу использует ваш текст.")" \
+        0 preview_header_style -- \
+        "spaced" "plain" "upper" "lower")
+    case "$style_choice" in
+        spaced) HEADER_SPACED=true ;;
+        *)      HEADER_SPACED=false ;;
+    esac
+    case "$style_choice" in
+        upper) HEADER_TEXT="${HEADER_TEXT^^}" ;;
+        lower) HEADER_TEXT="${HEADER_TEXT,,}" ;;
+    esac
+fi
+
+# --- Theme picker (preview uses real HEADER_TEXT now) ---
+# Drop any preset values from the previously-loaded config so the new pick
+# fully takes effect (apply_theme uses := and would otherwise keep old chars).
+unset THEME_BANNER_CHAR THEME_DIVIDER_CHAR THEME_KV_SEPARATOR THEME_HEADING_STYLE
 
 theme_choice=$(wizard_select_preview \
     "$(_l "Visual theme" "Визуальная тема")" \
@@ -281,6 +321,7 @@ theme_choice=$(wizard_select_preview \
     0 preview_theme -- \
     "classic" "slim" "heavy" "double" "dotted" "ascii" "arrows" "stars" "wave" "block" "pipes" "retro" "compact")
 THEME="$theme_choice"
+unset THEME_BANNER_CHAR THEME_DIVIDER_CHAR THEME_KV_SEPARATOR THEME_HEADING_STYLE
 apply_theme
 
 # --- Color theme ---
@@ -300,8 +341,8 @@ apply_color_theme
 sep_choice=$(wizard_select_preview \
     "$(_l "Key/Value separator" "Разделитель ключ/значение")" \
     "$(_l \
-"Character between a label and its value (Hostname : web-01)." \
-"Символ между меткой и значением (Hostname : web-01).")" \
+"Character between a label and its value (Hostname : web-01). Theme presets pick a default for you; pick differently here to override." \
+"Символ между меткой и значением (Hostname : web-01). У темы есть свой default — здесь можно переопределить.")" \
     0 preview_kv_sep -- \
     "Colon (:)" "Vertical bar (│)" "Triangle (▸)" "Arrow (→)" "Equals (=)")
 case "$sep_choice" in
@@ -311,32 +352,6 @@ case "$sep_choice" in
     "Arrow (→)")        THEME_KV_SEPARATOR="→" ;;
     "Equals (=)")       THEME_KV_SEPARATOR="=" ;;
 esac
-THEME="custom"
-
-# --- Header text ---
-
-if [[ "$HEADER_ENABLED" == "true" ]]; then
-    HEADER_TEXT=$(wizard_text \
-        "$(_l "Header text" "Текст заголовка")" \
-        "$(_l \
-"The big banner shown at the very top of every login. Usually your project or company name." \
-"Большой баннер сверху при каждом логине. Обычно — название проекта или компании.")" \
-        "$HEADER_TEXT")
-
-    style_choice=$(wizard_select_preview \
-        "$(_l "Header style" "Стиль заголовка")" \
-        "$(_l "How the header text should be rendered." "Как именно отображать текст заголовка.")" \
-        0 preview_header_style -- \
-        "spaced" "plain" "upper" "lower")
-    case "$style_choice" in
-        spaced) HEADER_SPACED=true ;;
-        *)      HEADER_SPACED=false ;;
-    esac
-    case "$style_choice" in
-        upper) HEADER_TEXT="${HEADER_TEXT^^}" ;;
-        lower) HEADER_TEXT="${HEADER_TEXT,,}" ;;
-    esac
-fi
 
 # --- Welcome ---
 
@@ -499,7 +514,12 @@ TS=$(date '+%Y-%m-%d %H:%M:%S')
     echo "# ---- Theme ----"
     echo "THEME=$(qstr "$THEME")"
     echo "COLOR_THEME=$(qstr "$COLOR_THEME")"
+    # Save the resolved theme variables as well, so per-variable user overrides
+    # (e.g. KV separator) survive even if the named theme's default differs.
+    echo "THEME_BANNER_CHAR=$(qstr "${THEME_BANNER_CHAR}")"
+    echo "THEME_DIVIDER_CHAR=$(qstr "${THEME_DIVIDER_CHAR}")"
     echo "THEME_KV_SEPARATOR=$(qstr "${THEME_KV_SEPARATOR}")"
+    echo "THEME_HEADING_STYLE=$(qstr "${THEME_HEADING_STYLE}")"
     echo
     echo "# ---- Header ----"
     echo "HEADER_TEXT=$(qstr "$HEADER_TEXT")"

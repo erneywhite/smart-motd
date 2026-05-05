@@ -69,97 +69,94 @@ detect_distro() {
 # Set THEME=custom to override the individual THEME_* variables manually.
 
 apply_theme() {
+    # Theme presets — `:=` so per-variable user overrides in config win.
+    # If you want a clean re-apply, `unset THEME_BANNER_CHAR THEME_DIVIDER_CHAR
+    # THEME_KV_SEPARATOR THEME_HEADING_STYLE` first (the setup wizard does this).
     local name="${THEME:-classic}"
     case "$name" in
         classic)
-            THEME_BANNER_CHAR='='
-            THEME_DIVIDER_CHAR='-'
-            THEME_KV_SEPARATOR=':'
-            THEME_HEADING_STYLE='centered'
-            ;;
-        slim)
-            THEME_BANNER_CHAR='─'
-            THEME_DIVIDER_CHAR='─'
-            THEME_KV_SEPARATOR=':'
-            THEME_HEADING_STYLE='centered'
-            ;;
-        heavy)
-            THEME_BANNER_CHAR='━'
-            THEME_DIVIDER_CHAR='━'
-            THEME_KV_SEPARATOR='▸'
-            THEME_HEADING_STYLE='bracketed'
-            ;;
-        double)
-            THEME_BANNER_CHAR='═'
-            THEME_DIVIDER_CHAR='═'
-            THEME_KV_SEPARATOR=':'
-            THEME_HEADING_STYLE='centered'
-            ;;
-        dotted)
-            THEME_BANNER_CHAR='┄'
-            THEME_DIVIDER_CHAR='┄'
-            THEME_KV_SEPARATOR='▸'
-            THEME_HEADING_STYLE='left'
-            ;;
-        ascii)
-            THEME_BANNER_CHAR='#'
-            THEME_DIVIDER_CHAR='-'
-            THEME_KV_SEPARATOR=':'
-            THEME_HEADING_STYLE='left'
-            ;;
-        arrows)
-            THEME_BANNER_CHAR='▶'
-            THEME_DIVIDER_CHAR='▸'
-            THEME_KV_SEPARATOR='→'
-            THEME_HEADING_STYLE='arrows'
-            ;;
-        stars)
-            THEME_BANNER_CHAR='★'
-            THEME_DIVIDER_CHAR='·'
-            THEME_KV_SEPARATOR='·'
-            THEME_HEADING_STYLE='stars'
-            ;;
-        wave)
-            THEME_BANNER_CHAR='~'
-            THEME_DIVIDER_CHAR='~'
-            THEME_KV_SEPARATOR='~'
-            THEME_HEADING_STYLE='wave'
-            ;;
-        block)
-            THEME_BANNER_CHAR='█'
-            THEME_DIVIDER_CHAR='▄'
-            THEME_KV_SEPARATOR='│'
-            THEME_HEADING_STYLE='bracketed'
-            ;;
-        pipes)
-            THEME_BANNER_CHAR='═'
-            THEME_DIVIDER_CHAR='─'
-            THEME_KV_SEPARATOR='│'
-            THEME_HEADING_STYLE='bracketed'
-            ;;
-        retro)
-            THEME_BANNER_CHAR='='
-            THEME_DIVIDER_CHAR='='
-            THEME_KV_SEPARATOR='='
-            THEME_HEADING_STYLE='left'
-            ;;
-        compact)
-            THEME_BANNER_CHAR='─'
-            THEME_DIVIDER_CHAR=' '
-            THEME_KV_SEPARATOR=':'
-            THEME_HEADING_STYLE='left'
-            ;;
-        custom)
             : "${THEME_BANNER_CHAR:==}"
             : "${THEME_DIVIDER_CHAR:=-}"
             : "${THEME_KV_SEPARATOR:=:}"
             : "${THEME_HEADING_STYLE:=centered}"
             ;;
-        *)
-            THEME_BANNER_CHAR='='
-            THEME_DIVIDER_CHAR='-'
-            THEME_KV_SEPARATOR=':'
-            THEME_HEADING_STYLE='centered'
+        slim)
+            : "${THEME_BANNER_CHAR:=─}"
+            : "${THEME_DIVIDER_CHAR:=─}"
+            : "${THEME_KV_SEPARATOR:=:}"
+            : "${THEME_HEADING_STYLE:=centered}"
+            ;;
+        heavy)
+            : "${THEME_BANNER_CHAR:=━}"
+            : "${THEME_DIVIDER_CHAR:=━}"
+            : "${THEME_KV_SEPARATOR:=▸}"
+            : "${THEME_HEADING_STYLE:=bracketed}"
+            ;;
+        double)
+            : "${THEME_BANNER_CHAR:=═}"
+            : "${THEME_DIVIDER_CHAR:=═}"
+            : "${THEME_KV_SEPARATOR:=:}"
+            : "${THEME_HEADING_STYLE:=centered}"
+            ;;
+        dotted)
+            : "${THEME_BANNER_CHAR:=┄}"
+            : "${THEME_DIVIDER_CHAR:=┄}"
+            : "${THEME_KV_SEPARATOR:=▸}"
+            : "${THEME_HEADING_STYLE:=left}"
+            ;;
+        ascii)
+            : "${THEME_BANNER_CHAR:=#}"
+            : "${THEME_DIVIDER_CHAR:=-}"
+            : "${THEME_KV_SEPARATOR:=:}"
+            : "${THEME_HEADING_STYLE:=left}"
+            ;;
+        arrows)
+            : "${THEME_BANNER_CHAR:=▶}"
+            : "${THEME_DIVIDER_CHAR:=▸}"
+            : "${THEME_KV_SEPARATOR:=→}"
+            : "${THEME_HEADING_STYLE:=arrows}"
+            ;;
+        stars)
+            : "${THEME_BANNER_CHAR:=★}"
+            : "${THEME_DIVIDER_CHAR:=·}"
+            : "${THEME_KV_SEPARATOR:=·}"
+            : "${THEME_HEADING_STYLE:=stars}"
+            ;;
+        wave)
+            : "${THEME_BANNER_CHAR:=~}"
+            : "${THEME_DIVIDER_CHAR:=~}"
+            : "${THEME_KV_SEPARATOR:=~}"
+            : "${THEME_HEADING_STYLE:=wave}"
+            ;;
+        block)
+            : "${THEME_BANNER_CHAR:=█}"
+            : "${THEME_DIVIDER_CHAR:=▄}"
+            : "${THEME_KV_SEPARATOR:=│}"
+            : "${THEME_HEADING_STYLE:=bracketed}"
+            ;;
+        pipes)
+            : "${THEME_BANNER_CHAR:=═}"
+            : "${THEME_DIVIDER_CHAR:=─}"
+            : "${THEME_KV_SEPARATOR:=│}"
+            : "${THEME_HEADING_STYLE:=bracketed}"
+            ;;
+        retro)
+            : "${THEME_BANNER_CHAR:==}"
+            : "${THEME_DIVIDER_CHAR:==}"
+            : "${THEME_KV_SEPARATOR:==}"
+            : "${THEME_HEADING_STYLE:=left}"
+            ;;
+        compact)
+            : "${THEME_BANNER_CHAR:=─}"
+            : "${THEME_DIVIDER_CHAR:= }"
+            : "${THEME_KV_SEPARATOR:=:}"
+            : "${THEME_HEADING_STYLE:=left}"
+            ;;
+        custom|*)
+            : "${THEME_BANNER_CHAR:==}"
+            : "${THEME_DIVIDER_CHAR:=-}"
+            : "${THEME_KV_SEPARATOR:=:}"
+            : "${THEME_HEADING_STYLE:=centered}"
             ;;
     esac
     : "${THEME_BANNER_WIDTH:=64}"

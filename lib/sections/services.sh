@@ -2,7 +2,7 @@
 # Services: status of configured systemd units.
 
 section_services() {
-    [[ ${#SERVICES_LIST[@]:-0} -gt 0 ]] || return
+    [[ ${#SERVICES_LIST[@]} -gt 0 ]] || return
     have systemctl || return
 
     section_heading "Services"

@@ -29,3 +29,12 @@ fi
 . "${SMART_MOTD_PREFIX}/lib/cache.sh"
 
 cache_update_all
+
+# Refresh pam_motd's dynamic cache (Debian/Ubuntu).
+# pam_motd reads /run/motd.dynamic at login; without this, changes to our
+# config and freshly-cached values aren't reflected until pam_motd's own
+# refresh schedule (which often skips many logins). Regenerate it from
+# /etc/update-motd.d/ ourselves so the next login is always current.
+if [[ -d /etc/update-motd.d ]] && [[ -d /run ]] && command -v run-parts >/dev/null 2>&1; then
+    SMART_MOTD_FORCE_COLOR=1 run-parts /etc/update-motd.d/ >/run/motd.dynamic 2>/dev/null || true
+fi
