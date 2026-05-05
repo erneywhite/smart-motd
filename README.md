@@ -7,7 +7,7 @@ Cross-distro (Debian / Ubuntu / RHEL / CentOS / Rocky / Alma / Fedora / Arch / o
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.0.0-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.1.1-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE%20%7C%20Alpine-blue)
 
 ## Preview
@@ -43,6 +43,7 @@ W e l c o m e   t o   y o u r   s e r v e r
 --------------------- Network -------------------------
  Public     : 203.0.113.42
  eth0       : 10.0.0.5
+ wg0        : 10.8.0.1
 -------------------------------------------------------
 ---------------- SSL certificates ---------------------
    example.com              84d left
@@ -87,7 +88,7 @@ The installer:
 1. Detects your distro family and installs missing prerequisites (`curl`, `tar`, `awk`).
 2. Drops the runtime into `/usr/local/lib/smart-motd/` and a CLI at `/usr/local/bin/smart-motd`.
 3. Wires it into the right place for your distro:
-   - **Debian / Ubuntu**: `/etc/update-motd.d/01-smart-motd` (and disables the default Ubuntu help-text/news scripts).
+   - **Debian / Ubuntu**: `/etc/update-motd.d/01-smart-motd`. Every other script in `/etc/update-motd.d/` and `/etc/motd.d/` is disabled (chmod -x), so the distro's default `landscape-sysinfo`, `motd-news`, ESM-announce, etc. don't leak under our banner.
    - **Everything else**: a systemd timer that renders the banner into `/etc/motd` every 5 minutes (cron fallback if no systemd).
 4. Sets up a 5-minute systemd timer (`smart-motd-cache.timer`) to refresh expensive data sources.
 5. Drops you into the interactive wizard so you can pick sections, theme, and color palette.
@@ -127,7 +128,7 @@ Each section is independent and can be turned on/off in the config (or via the w
 | **Maintenance** | "Reboot required" notice | Detects Debian flag, RHEL `needs-restarting` |
 | **Package updates** | Pending updates, security count | apt / dnf / yum / zypper / pacman / apk |
 | **Services** | Configured systemd units + status | `active` / `failed` / `inactive`; multiselect autodiscover |
-| **Network** | Public IP, internal interface IPs | |
+| **Network** | Public IP, internal interface IPs | Two independent toggles; interfaces multiselect or "all auto" |
 | **SSL certs** | Days until expiry, color-coded | Auto-discovers Let's Encrypt; supports remote checks `host:port` and PEM files |
 | **Security** | Failed SSH attempts (24h), fail2ban bans | journalctl + fail2ban-client |
 | **Temperature** | CPU temp via `lm-sensors` or `/sys/class/thermal` | |
@@ -235,7 +236,7 @@ On Debian/Ubuntu the same job also regenerates `/run/motd.dynamic` so `pam_motd`
 sudo smart-motd uninstall
 ```
 
-Removes the install dir, binaries, systemd units, cron entries, and the `update-motd.d` hook. Re-enables the default Ubuntu help-text/news scripts where applicable. Leaves `/etc/smart-motd/` so you can re-install without losing your config — wipe it manually if you want a clean slate.
+Removes the install dir, binaries, systemd units, cron entries, and the `update-motd.d` hook. Re-enables every script in `/etc/update-motd.d/` and `/etc/motd.d/` that the installer disabled, so the distro's original banner is fully restored. Leaves `/etc/smart-motd/` so you can re-install without losing your config — wipe it manually if you want a clean slate.
 
 ## Contributing
 
@@ -246,6 +247,7 @@ bin/
   motd-generate         # main entry, sources sections in order
   motd-cache-update     # refreshes cached snippets (and /run/motd.dynamic on Debian)
   motd-setup            # paged interactive wizard
+  motd-doctor           # diagnostic command (smart-motd doctor)
   motd-uninstall
   smart-motd            # CLI wrapper
 lib/
@@ -254,8 +256,10 @@ lib/
   wizard.sh             # paged-UI primitives (text/yesno/select/multiselect/list/preview)
   sections/             # one .sh per visible section
 systemd/
+.github/workflows/      # shellcheck + bash -n + e2e smoke test on every PR
 install.sh              # curl|sudo bash entrypoint
 config.example.conf
+CHANGELOG.md
 ```
 
 Adding a new section is one file in `lib/sections/`. See the existing ones (e.g. [`services.sh`](lib/sections/services.sh)) for the pattern.
@@ -268,6 +272,8 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 Highlights:
 
+- **v1.1.x** — Network section split into independent public-IP / internal-interfaces toggles with multiselect of detected interfaces (and "All interfaces (auto)" that future-proofs against newly-added ones). Fixed a latent bash empty-array bug that was silently hiding internal interface IPs since v0.1.0.
+- **v1.0.x** — First stable release. CI passes (`shellcheck` + `bash -n` + e2e smoke test). Installer now disables EVERY script in `/etc/update-motd.d/` (not just six hard-coded names), so newer Ubuntu defaults like `landscape-sysinfo` and `esm-announce` no longer leak under the banner.
 - **v0.5.0** — `smart-motd doctor` diagnostic command. New sections: VPN (WireGuard / OpenVPN), Time sync (NTP), Storage arrays (mdadm / ZFS).
 - **v0.4.x** — Paged wizard with viewport scrolling, 20 themes, 13 color palettes, RU translations, `smart-motd upgrade`, Ctrl+C exits cleanly.
 - **v0.3.x** — Login color force, cache the four heaviest sections (security/docker/podman/k8s), bilingual wizard.
