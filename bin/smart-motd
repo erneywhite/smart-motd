@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# smart-motd: user-facing CLI wrapper.
+
+set -u
+
+SMART_MOTD_PREFIX="${SMART_MOTD_PREFIX:-/usr/local/lib/smart-motd}"
+
+usage() {
+    cat <<EOF
+smart-motd — customizable MOTD for Linux servers
+
+Usage: smart-motd <command>
+
+Commands:
+  show           Print the MOTD now (preview).
+  setup          Re-run the interactive configuration wizard.
+  update-cache   Refresh cached values (updates count, SSL, public IP, …).
+  edit           Open the config file in \$EDITOR.
+  status         Show install paths, distro detection, cache freshness.
+  uninstall      Remove smart-motd from this system.
+  version        Show version.
+  help           Show this help.
+
+Config file: /etc/smart-motd/config.conf
+Cache dir:   /var/cache/smart-motd
+EOF
+}
+
+cmd="${1:-help}"
+case "$cmd" in
+    show)         exec "${SMART_MOTD_PREFIX}/bin/motd-generate" ;;
+    update-cache) exec "${SMART_MOTD_PREFIX}/bin/motd-cache-update" ;;
+    setup)        exec "${SMART_MOTD_PREFIX}/bin/motd-setup" ;;
+    edit)         exec "${EDITOR:-vi}" /etc/smart-motd/config.conf ;;
+    uninstall)    exec "${SMART_MOTD_PREFIX}/bin/motd-uninstall" ;;
+    status)
+        echo "smart-motd"
+        echo "  prefix:   $SMART_MOTD_PREFIX"
+        echo "  config:   /etc/smart-motd/config.conf"
+        echo "  cache:    /var/cache/smart-motd"
+        if [[ -r /etc/os-release ]]; then
+            # shellcheck disable=SC1091
+            . /etc/os-release
+            echo "  distro:   ${ID:-unknown} (${VERSION_ID:-?})"
+        fi
+        echo
+        echo "Cache files:"
+        if [[ -d /var/cache/smart-motd ]]; then
+            ls -la /var/cache/smart-motd 2>/dev/null | tail -n +2
+        else
+            echo "  (cache dir not yet created — run: smart-motd update-cache)"
+        fi
+        ;;
+    version)
+        cat "${SMART_MOTD_PREFIX}/VERSION" 2>/dev/null || echo "unknown"
+        ;;
+    help|-h|--help) usage ;;
+    *)            usage; exit 1 ;;
+esac

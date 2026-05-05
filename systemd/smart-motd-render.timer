@@ -1,0 +1,11 @@
+[Unit]
+Description=Render smart-motd into /etc/motd periodically
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=5min
+AccuracySec=10s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

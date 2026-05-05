@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# smart-motd: remove all installed pieces.
+
+set -u
+
+PREFIX="/usr/local/lib/smart-motd"
+BIN_DIR="/usr/local/bin"
+CONFIG_DIR="/etc/smart-motd"
+CACHE_DIR="/var/cache/smart-motd"
+
+if [[ "$EUID" -ne 0 ]]; then
+    echo "smart-motd uninstall must be run as root." >&2
+    exit 1
+fi
+
+echo "Uninstalling smart-motd…"
+
+# systemd units
+if command -v systemctl >/dev/null 2>&1; then
+    for u in smart-motd-cache.timer smart-motd-cache.service \
+             smart-motd-render.timer smart-motd-render.service; do
+        systemctl disable --now "$u" 2>/dev/null || true
+        rm -f "/etc/systemd/system/$u"
+    done
+    systemctl daemon-reload
+fi
+
+# update-motd.d hook
+rm -f /etc/update-motd.d/01-smart-motd
+
+# Restore the disabled default Ubuntu MOTD scripts (best-effort)
+for f in /etc/update-motd.d/10-help-text \
+         /etc/update-motd.d/50-motd-news \
+         /etc/update-motd.d/00-header \
+         /etc/update-motd.d/80-livepatch \
+         /etc/update-motd.d/91-release-upgrade \
+         /etc/update-motd.d/97-overlayroot; do
+    [[ -f "$f" ]] && chmod +x "$f" 2>/dev/null || true
+done
+
+# cron entries
+if command -v crontab >/dev/null 2>&1; then
+    crontab -l 2>/dev/null | grep -v 'smart-motd\|motd-cache-update' | crontab - 2>/dev/null || true
+fi
+
+# Clear /etc/motd if it was set by us (we can't be 100% sure; only blank it).
+: >/etc/motd 2>/dev/null || true
+
+# Files
+rm -rf "$PREFIX" "$CACHE_DIR"
+rm -f "$BIN_DIR/smart-motd"
+
+echo "Removed install dir and binaries."
+echo "Config dir $CONFIG_DIR was kept (contains your settings). Remove manually if you want:"
+echo "  sudo rm -rf $CONFIG_DIR"

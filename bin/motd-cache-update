@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# smart-motd: refresh cached values. Run periodically (systemd timer or cron).
+#
+# Safe to run as root or as the motd user; just needs write access to the cache dir.
+
+set -u
+
+SMART_MOTD_PREFIX="${SMART_MOTD_PREFIX:-/usr/local/lib/smart-motd}"
+SMART_MOTD_CONFIG="${SMART_MOTD_CONFIG:-/etc/smart-motd/config.conf}"
+
+# Defaults so referenced vars are always set.
+SSL_AUTODISCOVER_LETSENCRYPT=true
+SSL_DOMAINS=()
+SSL_WARN_DAYS=14
+WEATHER_ENABLED=false
+WEATHER_CITY=""
+DIRECTORIES_ENABLED=false
+DIRECTORIES_LIST=()
+SMART_ENABLED=auto
+SMART_DISKS=()
+COLORS_ENABLED=true
+
+if [[ -r "$SMART_MOTD_CONFIG" ]]; then
+    # shellcheck disable=SC1090
+    . "$SMART_MOTD_CONFIG"
+fi
+
+# shellcheck source=../lib/cache.sh
+. "${SMART_MOTD_PREFIX}/lib/cache.sh"
+
+cache_update_all

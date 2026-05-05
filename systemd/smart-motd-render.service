@@ -1,0 +1,9 @@
+[Unit]
+Description=Render smart-motd into /etc/motd
+Documentation=https://github.com/erneywhite/smart-motd
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+ExecStart=/bin/sh -c '/usr/local/lib/smart-motd/bin/motd-generate >/etc/motd'

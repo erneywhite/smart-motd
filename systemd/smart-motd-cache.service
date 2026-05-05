@@ -1,0 +1,9 @@
+[Unit]
+Description=smart-motd cache refresh
+Documentation=https://github.com/erneywhite/smart-motd
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+ExecStart=/usr/local/lib/smart-motd/bin/motd-cache-update

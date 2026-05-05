@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh smart-motd cache periodically
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=5min
+RandomizedDelaySec=20s
+AccuracySec=10s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

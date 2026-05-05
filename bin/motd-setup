@@ -1,0 +1,344 @@
+#!/usr/bin/env bash
+# smart-motd: interactive configuration wizard.
+# Re-runnable; loads existing config as defaults if present.
+
+set -u
+
+SMART_MOTD_PREFIX="${SMART_MOTD_PREFIX:-/usr/local/lib/smart-motd}"
+SMART_MOTD_CONFIG_DIR="${SMART_MOTD_CONFIG_DIR:-/etc/smart-motd}"
+SMART_MOTD_CONFIG="${SMART_MOTD_CONFIG_DIR}/config.conf"
+
+# shellcheck source=../lib/common.sh
+. "${SMART_MOTD_PREFIX}/lib/common.sh"
+detect_distro
+
+if [[ "$EUID" -ne 0 ]]; then
+    echo "smart-motd setup must be run as root (sudo smart-motd setup)." >&2
+    exit 1
+fi
+
+# ---------- helpers ----------
+
+ask() {
+    # ask "Prompt" "default"
+    local prompt="$1" default="${2:-}" reply
+    if [[ -n "$default" ]]; then
+        read -r -p "$prompt [$default]: " reply
+        printf '%s' "${reply:-$default}"
+    else
+        read -r -p "$prompt: " reply
+        printf '%s' "$reply"
+    fi
+}
+
+ask_yn() {
+    # ask_yn "Prompt" "y"|"n"
+    local prompt="$1" default="${2:-y}" reply
+    local hint="[Y/n]"
+    [[ "$default" == "n" ]] && hint="[y/N]"
+    while true; do
+        read -r -p "$prompt $hint: " reply
+        reply="${reply:-$default}"
+        case "${reply,,}" in
+            y|yes) return 0 ;;
+            n|no)  return 1 ;;
+        esac
+    done
+}
+
+ask_list() {
+    # ask_list "Prompt" — read multi-line list, blank line ends.
+    local prompt="$1" line
+    echo "$prompt"
+    echo "  (one entry per line; empty line to finish)"
+    local items=()
+    while IFS= read -r -p "  > " line; do
+        [[ -z "$line" ]] && break
+        items+=("$line")
+    done
+    printf '%s\n' "${items[@]}"
+}
+
+# Quote a value for safe inclusion in a bash-sourced config file.
+qstr() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
+
+write_array() {
+    # write_array NAME val1 val2 ...
+    local name="$1"; shift
+    if [[ $# -eq 0 ]]; then
+        printf '%s=()\n' "$name"
+        return
+    fi
+    printf '%s=(' "$name"
+    local first=1 v
+    for v in "$@"; do
+        if (( first )); then first=0; else printf ' '; fi
+        printf '%s' "$(qstr "$v")"
+    done
+    printf ')\n'
+}
+
+# ---------- load existing config (so re-runs preserve values) ----------
+
+# Defaults
+HEADER_TEXT="Welcome"
+HEADER_SPACED=true
+WELCOME_TITLE=""
+WELCOME_LINES=()
+WARNING_LINES=(
+    "Authorized access only!"
+    "All connections are logged and monitored."
+    "Unauthorized use may be subject to criminal prosecution."
+)
+SYSTEM_DISK_PATHS=("/")
+SERVICES_LIST=()
+NETWORK_SHOW_PUBLIC_IP=true
+SSL_AUTODISCOVER_LETSENCRYPT=true
+SSL_DOMAINS=()
+SSL_WARN_DAYS=14
+DIRECTORIES_LIST=()
+LASTLOGIN_COUNT=3
+WEATHER_CITY=""
+COLORS_ENABLED=true
+HEADER_ENABLED=true
+WELCOME_ENABLED=true
+WARNING_ENABLED=true
+SYSTEM_ENABLED=true
+MAINTENANCE_ENABLED=true
+UPDATES_ENABLED=true
+SERVICES_ENABLED=false
+NETWORK_ENABLED=true
+SSL_ENABLED=true
+SECURITY_ENABLED=true
+TEMPERATURE_ENABLED=auto
+SMART_ENABLED=auto
+DOCKER_ENABLED=auto
+PODMAN_ENABLED=auto
+KUBERNETES_ENABLED=auto
+DIRECTORIES_ENABLED=false
+LASTLOGIN_ENABLED=true
+WEATHER_ENABLED=false
+FOOTER_ENABLED=true
+DOCKER_FILTER=""
+
+if [[ -r "$SMART_MOTD_CONFIG" ]]; then
+    echo "Existing config detected at $SMART_MOTD_CONFIG."
+    if ask_yn "Load it as defaults for this run?" y; then
+        # shellcheck disable=SC1090
+        . "$SMART_MOTD_CONFIG"
+    fi
+    echo
+fi
+
+# ---------- wizard ----------
+
+cat <<EOF
+
+${C_BOLD}smart-motd configuration${C_RESET}
+=================================
+Detected distro: ${DISTRO_ID} (family: ${DISTRO_FAMILY})
+
+We'll walk through the sections. You can re-run this any time with:
+  sudo smart-motd setup
+
+EOF
+
+# --- Header ---
+echo "${C_BOLD}1. Header${C_RESET}"
+HEADER_TEXT=$(ask "  Banner text" "$HEADER_TEXT")
+ask_yn "  Render with letter spacing (E r n e y …)?" "y" && HEADER_SPACED=true || HEADER_SPACED=false
+echo
+
+# --- Welcome ---
+echo "${C_BOLD}2. Welcome lines${C_RESET}"
+WELCOME_TITLE=$(ask "  Welcome title (e.g. live.example.com (production); blank to skip)" "$WELCOME_TITLE")
+echo "  Add custom KV lines (format: Label|Value, e.g. URL_1|https://example.com)"
+echo "  Existing entries:"
+for e in "${WELCOME_LINES[@]:-}"; do echo "    - $e"; done
+if ask_yn "  Replace welcome KV lines?" "n"; then
+    mapfile -t WELCOME_LINES < <(ask_list "  Enter Label|Value lines:")
+fi
+echo
+
+# --- Warning ---
+echo "${C_BOLD}3. Warning / legal banner${C_RESET}"
+echo "  Current lines:"
+for e in "${WARNING_LINES[@]:-}"; do echo "    - $e"; done
+if ask_yn "  Replace warning lines?" "n"; then
+    mapfile -t WARNING_LINES < <(ask_list "  Enter warning lines:")
+fi
+echo
+
+# --- System status ---
+echo "${C_BOLD}4. System status (uptime, load, mem, disk)${C_RESET}"
+echo "  Disk mountpoints to display: ${SYSTEM_DISK_PATHS[*]}"
+if ask_yn "  Change them?" "n"; then
+    mapfile -t SYSTEM_DISK_PATHS < <(ask_list "  Enter mountpoints (e.g. / /var /home):")
+fi
+echo
+
+# --- Updates ---
+echo "${C_BOLD}5. Package updates${C_RESET}"
+ask_yn "  Show pending package updates?" "y" && UPDATES_ENABLED=true || UPDATES_ENABLED=false
+echo
+
+# --- Services ---
+echo "${C_BOLD}6. systemd services${C_RESET}"
+echo "  Currently watched: ${SERVICES_LIST[*]:-(none)}"
+if ask_yn "  Configure watched services?" "n"; then
+    mapfile -t SERVICES_LIST < <(ask_list "  systemd unit names (e.g. nginx postgresql):")
+    [[ ${#SERVICES_LIST[@]} -gt 0 ]] && SERVICES_ENABLED=true
+fi
+echo
+
+# --- Network ---
+echo "${C_BOLD}7. Network${C_RESET}"
+ask_yn "  Show interfaces & IPs?" "y" && NETWORK_ENABLED=true || NETWORK_ENABLED=false
+ask_yn "  Look up & display public IP?" "y" && NETWORK_SHOW_PUBLIC_IP=true || NETWORK_SHOW_PUBLIC_IP=false
+echo
+
+# --- SSL ---
+echo "${C_BOLD}8. SSL certificates${C_RESET}"
+if ask_yn "  Show SSL certificate expiry?" "y"; then
+    SSL_ENABLED=true
+    ask_yn "  Auto-discover Let's Encrypt certs in /etc/letsencrypt/live/?" "y" \
+        && SSL_AUTODISCOVER_LETSENCRYPT=true || SSL_AUTODISCOVER_LETSENCRYPT=false
+    echo "  Additional domains/files (host[:port] for remote check, or absolute path to .pem)"
+    echo "  Current: ${SSL_DOMAINS[*]:-(none)}"
+    if ask_yn "  Replace the additional list?" "n"; then
+        mapfile -t SSL_DOMAINS < <(ask_list "  Domains/paths:")
+    fi
+    SSL_WARN_DAYS=$(ask "  Warn when fewer than N days remain" "$SSL_WARN_DAYS")
+else
+    SSL_ENABLED=false
+fi
+echo
+
+# --- Security ---
+echo "${C_BOLD}9. Security (failed SSH + fail2ban)${C_RESET}"
+ask_yn "  Show?" "y" && SECURITY_ENABLED=true || SECURITY_ENABLED=false
+echo
+
+# --- Containers ---
+echo "${C_BOLD}10. Containers${C_RESET}"
+ask_yn "  Show Docker containers (auto-skip if Docker not installed)?" "y" \
+    && DOCKER_ENABLED=auto || DOCKER_ENABLED=false
+ask_yn "  Show Podman containers?" "y" \
+    && PODMAN_ENABLED=auto || PODMAN_ENABLED=false
+ask_yn "  Show Kubernetes summary?" "y" \
+    && KUBERNETES_ENABLED=auto || KUBERNETES_ENABLED=false
+DOCKER_FILTER=$(ask "  Optional Docker name filter (regex; blank for all)" "$DOCKER_FILTER")
+echo
+
+# --- Hardware ---
+echo "${C_BOLD}11. Hardware sensors${C_RESET}"
+ask_yn "  Show CPU temperature (auto-skip if unavailable)?" "y" \
+    && TEMPERATURE_ENABLED=auto || TEMPERATURE_ENABLED=false
+ask_yn "  Show disk SMART status (requires smartmontools)?" "y" \
+    && SMART_ENABLED=auto || SMART_ENABLED=false
+echo
+
+# --- Directories ---
+echo "${C_BOLD}12. Monitored directories${C_RESET}"
+echo "  E.g. backup destinations, big project dirs."
+echo "  Current: ${DIRECTORIES_LIST[*]:-(none)}"
+if ask_yn "  Configure now?" "n"; then
+    DIRECTORIES_ENABLED=true
+    echo "  Format: Label|/absolute/path"
+    mapfile -t DIRECTORIES_LIST < <(ask_list "  Entries:")
+fi
+echo
+
+# --- Last logins ---
+echo "${C_BOLD}13. Recent logins${C_RESET}"
+ask_yn "  Show recent successful logins?" "y" && LASTLOGIN_ENABLED=true || LASTLOGIN_ENABLED=false
+LASTLOGIN_COUNT=$(ask "  How many to show" "$LASTLOGIN_COUNT")
+echo
+
+# --- Weather ---
+echo "${C_BOLD}14. Weather (just for fun, uses wttr.in)${C_RESET}"
+if ask_yn "  Enable?" "n"; then
+    WEATHER_ENABLED=true
+    WEATHER_CITY=$(ask "  City (blank = auto-detect by IP)" "$WEATHER_CITY")
+fi
+echo
+
+# --- Colors ---
+echo "${C_BOLD}15. Colors${C_RESET}"
+ask_yn "  Use ANSI colors?" "y" && COLORS_ENABLED=true || COLORS_ENABLED=false
+echo
+
+# ---------- write config ----------
+
+mkdir -p "$SMART_MOTD_CONFIG_DIR"
+TS=$(date '+%Y-%m-%d %H:%M:%S')
+
+{
+    echo "# smart-motd configuration"
+    echo "# Generated by 'smart-motd setup' at $TS"
+    echo "# Re-run 'sudo smart-motd setup' to reconfigure, or edit this file directly."
+    echo
+    echo "# ---- Header ----"
+    echo "HEADER_TEXT=$(qstr "$HEADER_TEXT")"
+    echo "HEADER_SPACED=$HEADER_SPACED"
+    echo
+    echo "# ---- Welcome ----"
+    echo "WELCOME_TITLE=$(qstr "$WELCOME_TITLE")"
+    write_array WELCOME_LINES "${WELCOME_LINES[@]}"
+    echo
+    echo "# ---- Warning ----"
+    write_array WARNING_LINES "${WARNING_LINES[@]}"
+    echo
+    echo "# ---- System status ----"
+    write_array SYSTEM_DISK_PATHS "${SYSTEM_DISK_PATHS[@]}"
+    echo
+    echo "# ---- Services ----"
+    write_array SERVICES_LIST "${SERVICES_LIST[@]}"
+    echo
+    echo "# ---- Network ----"
+    echo "NETWORK_SHOW_PUBLIC_IP=$NETWORK_SHOW_PUBLIC_IP"
+    echo
+    echo "# ---- SSL ----"
+    echo "SSL_AUTODISCOVER_LETSENCRYPT=$SSL_AUTODISCOVER_LETSENCRYPT"
+    write_array SSL_DOMAINS "${SSL_DOMAINS[@]}"
+    echo "SSL_WARN_DAYS=$SSL_WARN_DAYS"
+    echo
+    echo "# ---- Containers ----"
+    echo "DOCKER_FILTER=$(qstr "$DOCKER_FILTER")"
+    echo
+    echo "# ---- Directories ----"
+    write_array DIRECTORIES_LIST "${DIRECTORIES_LIST[@]}"
+    echo
+    echo "# ---- Last logins ----"
+    echo "LASTLOGIN_COUNT=$LASTLOGIN_COUNT"
+    echo
+    echo "# ---- Weather ----"
+    echo "WEATHER_CITY=$(qstr "$WEATHER_CITY")"
+    echo
+    echo "# ---- Colors ----"
+    echo "COLORS_ENABLED=$COLORS_ENABLED"
+    echo
+    echo "# ---- Section toggles ----"
+    for s in HEADER WELCOME WARNING SYSTEM MAINTENANCE UPDATES SERVICES NETWORK SSL \
+             SECURITY TEMPERATURE SMART DOCKER PODMAN KUBERNETES DIRECTORIES \
+             LASTLOGIN WEATHER FOOTER; do
+        var="${s}_ENABLED"
+        echo "${var}=${!var}"
+    done
+} >"$SMART_MOTD_CONFIG"
+
+chmod 0644 "$SMART_MOTD_CONFIG"
+
+echo "${C_GREEN}Config saved to $SMART_MOTD_CONFIG${C_RESET}"
+echo
+
+# ---------- prime cache ----------
+echo "Priming cache (this may take a few seconds)…"
+"${SMART_MOTD_PREFIX}/bin/motd-cache-update" || true
+echo
+
+# ---------- preview ----------
+if ask_yn "Preview the MOTD now?" "y"; then
+    echo
+    SMART_MOTD_FORCE_COLOR=1 "${SMART_MOTD_PREFIX}/bin/motd-generate"
+fi

@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# smart-motd: main entry. Sources config + section libs, then runs sections in order.
+
+set -u
+
+SMART_MOTD_PREFIX="${SMART_MOTD_PREFIX:-/usr/local/lib/smart-motd}"
+SMART_MOTD_CONFIG="${SMART_MOTD_CONFIG:-/etc/smart-motd/config.conf}"
+
+# Load defaults; config sets only what it overrides.
+HEADER_TEXT="Welcome"
+HEADER_SPACED=true
+WELCOME_TITLE=""
+WELCOME_LINES=()
+WARNING_LINES=()
+SYSTEM_DISK_PATHS=("/")
+SERVICES_LIST=()
+NETWORK_SHOW_PUBLIC_IP=true
+NETWORK_INTERFACES=()
+SSL_AUTODISCOVER_LETSENCRYPT=true
+SSL_DOMAINS=()
+SSL_WARN_DAYS=14
+SMART_DISKS=()
+DIRECTORIES_LIST=()
+LASTLOGIN_COUNT=3
+WEATHER_CITY=""
+FOOTER_TEXT=""
+COLORS_ENABLED=true
+
+# Section toggles
+HEADER_ENABLED=true
+WELCOME_ENABLED=true
+WARNING_ENABLED=true
+SYSTEM_ENABLED=true
+MAINTENANCE_ENABLED=true
+UPDATES_ENABLED=true
+SERVICES_ENABLED=true
+NETWORK_ENABLED=true
+SSL_ENABLED=true
+SECURITY_ENABLED=true
+TEMPERATURE_ENABLED=auto
+SMART_ENABLED=auto
+DOCKER_ENABLED=auto
+PODMAN_ENABLED=auto
+KUBERNETES_ENABLED=auto
+DIRECTORIES_ENABLED=false
+LASTLOGIN_ENABLED=true
+WEATHER_ENABLED=false
+FOOTER_ENABLED=true
+
+SECTION_ORDER=(
+    header welcome warning
+    system maintenance updates
+    services network ssl
+    security temperature smart
+    docker podman kubernetes
+    directories lastlogin weather
+    footer
+)
+
+# Load user config (if it exists).
+if [[ -r "$SMART_MOTD_CONFIG" ]]; then
+    # shellcheck disable=SC1090
+    . "$SMART_MOTD_CONFIG"
+fi
+
+# shellcheck source=../lib/common.sh
+. "${SMART_MOTD_PREFIX}/lib/common.sh"
+detect_distro
+
+# Source every section module.
+for f in "${SMART_MOTD_PREFIX}"/lib/sections/*.sh; do
+    # shellcheck disable=SC1090
+    . "$f"
+done
+
+# Dispatch in configured order. A section function may return early if disabled.
+for sec in "${SECTION_ORDER[@]}"; do
+    if ! section_enabled "${sec^^}"; then
+        continue
+    fi
+    fn="section_${sec}"
+    if declare -F "$fn" >/dev/null; then
+        "$fn"
+    fi
+done
