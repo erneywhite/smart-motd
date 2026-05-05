@@ -192,7 +192,7 @@ case "$lang_choice" in
     "Русский") WIZ_LANG="ru" ;;
     *)          WIZ_LANG="en" ;;
 esac
-WIZ_STEP=0  # don't count language picker in step counter
+_wiz_step_reset  # don't count the language picker against the user's progress
 
 # --- intro ---
 

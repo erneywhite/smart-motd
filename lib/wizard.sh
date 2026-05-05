@@ -28,6 +28,41 @@ WIZ_STEP=0
 WIZ_TOTAL=0
 WIZ_MAIN_TITLE="smart-motd setup"
 
+# Step counter is persisted to a temp file so subshell-invoked
+# wizard functions (called via $(...) or <(...) for output capture)
+# can update it visibly to the parent shell. Without this, every
+# page re-reads WIZ_STEP=0 from the parent and shows "step 1".
+WIZ_STEP_FILE="${WIZ_STEP_FILE:-}"
+
+_wiz_step_init() {
+    if [[ -z "$WIZ_STEP_FILE" ]] || [[ ! -f "$WIZ_STEP_FILE" ]]; then
+        WIZ_STEP_FILE=$(mktemp -t smart-motd-step.XXXXXX 2>/dev/null || mktemp)
+        printf '0\n' >"$WIZ_STEP_FILE"
+        export WIZ_STEP_FILE
+        # Best-effort cleanup. Won't fire on Ctrl+C from inside a subshell,
+        # but mktemp(1) files are world-writable in /tmp so it's fine.
+        trap '[[ -f "$WIZ_STEP_FILE" ]] && rm -f "$WIZ_STEP_FILE"' EXIT
+    fi
+}
+
+_wiz_step_incr() {
+    _wiz_step_init
+    local n
+    n=$(<"$WIZ_STEP_FILE")
+    n=$((n + 1))
+    printf '%d\n' "$n" >"$WIZ_STEP_FILE"
+}
+
+_wiz_step_get() {
+    _wiz_step_init
+    cat "$WIZ_STEP_FILE" 2>/dev/null || echo 0
+}
+
+_wiz_step_reset() {
+    _wiz_step_init
+    printf '0\n' >"$WIZ_STEP_FILE"
+}
+
 # --- terminal helpers ---
 
 _wiz_cols() {
@@ -69,14 +104,49 @@ _repeat() {
     printf "%${n}s" '' | tr ' ' "$ch"
 }
 
-# Word-wrap text to N columns.
+# Truncate a plain string to N chars, appending "…" if truncated.
+# Used to keep multiselect / select option labels from spilling past
+# the right edge on narrow terminals. Don't pass strings that contain
+# ANSI escape codes — wizard option labels don't.
+_truncate() {
+    local s="$1" max="$2"
+    if (( ${#s} <= max )); then
+        printf '%s' "$s"
+    else
+        printf '%s…' "${s:0:$((max - 1))}"
+    fi
+}
+
+# Word-wrap text to N columns. Pure bash so we never break inside a
+# multibyte UTF-8 sequence (which `fold -w` does — it counts bytes,
+# not characters, and turns each ─ / `─` divider line into garbage on
+# wrap). Splits only on ASCII spaces, which are always 1 byte, so
+# Cyrillic / box-drawing / emoji content is preserved verbatim.
 _wrap() {
     local text="$1" width="${2:-78}"
-    if command -v fold >/dev/null 2>&1; then
-        printf '%s\n' "$text" | fold -s -w "$width"
-    else
-        printf '%s\n' "$text"
-    fi
+    local line cur w
+    local words=()
+    while IFS= read -r line; do
+        if (( ${#line} <= width )); then
+            printf '%s\n' "$line"
+            continue
+        fi
+        # word-wrap this line on whitespace
+        # shellcheck disable=SC2206
+        words=( $line )
+        cur=""
+        for w in "${words[@]}"; do
+            if [[ -z "$cur" ]]; then
+                cur="$w"
+            elif (( ${#cur} + 1 + ${#w} <= width )); then
+                cur="$cur $w"
+            else
+                printf '%s\n' "$cur"
+                cur="$w"
+            fi
+        done
+        [[ -n "$cur" ]] && printf '%s\n' "$cur"
+    done <<<"$text"
 }
 
 # --- header & footer ---
@@ -93,11 +163,13 @@ _wiz_header() {
     _wiz_home
 
     local step=""
-    if (( WIZ_STEP > 0 )); then
+    local step_n
+    step_n=$(_wiz_step_get)
+    if (( step_n > 0 )); then
         if (( WIZ_TOTAL > 0 )); then
-            step="step ${WIZ_STEP} of ${WIZ_TOTAL} "
+            step="step ${step_n} of ${WIZ_TOTAL} "
         else
-            step="step ${WIZ_STEP} "
+            step="step ${step_n} "
         fi
     fi
     local left=" ${WIZ_MAIN_TITLE}"
@@ -131,6 +203,7 @@ wizard_intro() {
     _wiz_header "$title"
     _wiz_help "$body"
     _wiz_footer "Press Enter to begin · Ctrl+C to cancel"
+    _wiz_clear_tail
     local _key
     IFS= read -r _key </dev/tty || true
 }
@@ -140,6 +213,7 @@ wizard_done() {
     _wiz_header "$title"
     _wiz_help "$body"
     _wiz_footer "Press Enter to finish"
+    _wiz_clear_tail
     local _key
     IFS= read -r _key </dev/tty || true
 }
@@ -147,11 +221,15 @@ wizard_done() {
 # --- text input ---
 
 wizard_text() {
-    (( WIZ_STEP++ )) || true
+    _wiz_step_incr
     local title="$1" help="$2" default="${3:-}"
     _wiz_header "$title"
     _wiz_help "$help"
     _p "  > "
+    # Wipe everything below the prompt — leftover content from a previous,
+    # taller page (multiselect, list editor) would otherwise be visible
+    # under the input.
+    _wiz_clear_tail
     _wiz_show_cursor
     local result
     if [[ -n "$default" ]]; then
@@ -163,11 +241,12 @@ wizard_text() {
 }
 
 wizard_password() {
-    (( WIZ_STEP++ )) || true
+    _wiz_step_incr
     local title="$1" help="$2"
     _wiz_header "$title"
     _wiz_help "$help"
     _p "  > "
+    _wiz_clear_tail
     local result
     IFS= read -r -s result </dev/tty
     _p "\n"
@@ -177,7 +256,7 @@ wizard_password() {
 # --- yes / no (just a 2-option select with shortcut keys) ---
 
 wizard_yesno() {
-    (( WIZ_STEP++ )) || true
+    _wiz_step_incr
     local title="$1" help="$2" default="${3:-y}"
     local sel=0
     [[ "$default" == "n" || "$default" == "no" ]] && sel=1
@@ -225,7 +304,7 @@ wizard_yesno() {
 #   wizard_select "Title" "Help" 0 -- "Option A" "Option B" "Option C"
 
 wizard_select() {
-    (( WIZ_STEP++ )) || true
+    _wiz_step_incr
     local title="$1" help="$2" sel="${3:-0}"
     shift 3
     [[ "${1:-}" == "--" ]] && shift
@@ -234,16 +313,20 @@ wizard_select() {
     (( sel < 0 || sel >= n )) && sel=0
 
     _wiz_hide_cursor
-    local key seq i
+    local key seq i cols max_label label
     while true; do
         _wiz_header "$title"
         _wiz_help "$help"
+        cols=$(_wiz_cols)
+        max_label=$(( cols - 6 ))  # account for "  ❯ " prefix + 1 char margin
+        (( max_label < 10 )) && max_label=10
 
         for i in "${!options[@]}"; do
+            label=$(_truncate "${options[i]}" "$max_label")
             if (( i == sel )); then
-                _p "  \e[1;36m❯ ${options[i]}\e[0m\n"
+                _p "  \e[1;36m❯ ${label}\e[0m\n"
             else
-                _p "    ${options[i]}\n"
+                _p "    ${label}\n"
             fi
         done
         _wiz_footer "↑/↓ navigate · 1-9 jump · Enter to confirm"
@@ -277,7 +360,7 @@ wizard_select() {
 # rule under "Preview:".
 
 wizard_select_preview() {
-    (( WIZ_STEP++ )) || true
+    _wiz_step_incr
     local title="$1" help="$2" sel="${3:-0}" render_fn="$4"
     shift 4
     [[ "${1:-}" == "--" ]] && shift
@@ -286,16 +369,20 @@ wizard_select_preview() {
     (( sel < 0 || sel >= n )) && sel=0
 
     _wiz_hide_cursor
-    local key seq i
+    local key seq i cols max_label label
     while true; do
         _wiz_header "$title"
         _wiz_help "$help"
+        cols=$(_wiz_cols)
+        max_label=$(( cols - 6 ))
+        (( max_label < 10 )) && max_label=10
 
         for i in "${!options[@]}"; do
+            label=$(_truncate "${options[i]}" "$max_label")
             if (( i == sel )); then
-                _p "  \e[1;36m❯ ${options[i]}\e[0m\n"
+                _p "  \e[1;36m❯ ${label}\e[0m\n"
             else
-                _p "    ${options[i]}\n"
+                _p "    ${label}\n"
             fi
         done
 
@@ -331,7 +418,7 @@ wizard_select_preview() {
 # Returns: lines of selected option labels (without the prefix).
 
 wizard_multiselect() {
-    (( WIZ_STEP++ )) || true
+    _wiz_step_incr
     local title="$1" help="$2"
     shift 2
     [[ "${1:-}" == "--" ]] && shift
@@ -351,18 +438,22 @@ wizard_multiselect() {
     done
 
     _wiz_hide_cursor
-    local key seq
+    local key seq cols max_label label mark
     while true; do
         _wiz_header "$title"
         _wiz_help "$help"
+        cols=$(_wiz_cols)
+        max_label=$(( cols - 10 ))  # "  ❯ [✓] " prefix
+        (( max_label < 10 )) && max_label=10
 
         for i in "${!options[@]}"; do
-            local mark="\e[2m[ ]\e[0m"
+            mark="\e[2m[ ]\e[0m"
             [[ "${checked[i]}" == "1" ]] && mark="\e[1;32m[✓]\e[0m"
+            label=$(_truncate "${options[i]}" "$max_label")
             if (( i == sel )); then
-                _p "  \e[1;36m❯\e[0m ${mark} \e[1m${options[i]}\e[0m\n"
+                _p "  \e[1;36m❯\e[0m ${mark} \e[1m${label}\e[0m\n"
             else
-                _p "    ${mark} ${options[i]}\n"
+                _p "    ${mark} ${label}\n"
             fi
         done
         _wiz_footer "↑/↓ move · Space toggle · a all · n none · Enter confirm"
@@ -398,7 +489,7 @@ wizard_multiselect() {
 # (Note: empty list returns no output.)
 
 wizard_list() {
-    (( WIZ_STEP++ )) || true
+    _wiz_step_incr
     local title="$1" help="$2"
     shift 2
     local items=("$@")
@@ -408,12 +499,18 @@ wizard_list() {
         _wiz_header "$title"
         _wiz_help "$help"
 
+        local cols max_label label
+        cols=$(_wiz_cols)
+        max_label=$(( cols - 8 ))
+        (( max_label < 10 )) && max_label=10
+
         if [[ ${#items[@]} -eq 0 ]]; then
             _p "  \e[2m(empty list)\e[0m\n"
         else
             local i
             for i in "${!items[@]}"; do
-                _p "  \e[2m$(printf '%2d.' $((i+1)))\e[0m ${items[i]}\n"
+                label=$(_truncate "${items[i]}" "$max_label")
+                _p "  \e[2m$(printf '%2d.' $((i+1)))\e[0m ${label}\n"
             done
         fi
         _wiz_footer "[a] add · [d] delete last · [c] clear · Enter to finish"
