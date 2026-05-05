@@ -63,12 +63,6 @@ else
     C_BRIGHT_GREEN=""; C_BRIGHT_CYAN=""
 fi
 
-VERSION="$(cat 2>/dev/null <<'EOF'
-unknown
-EOF
-)"
-# We don't ship VERSION inside this script's heredoc; fetch from repo later.
-
 # ---------- visual helpers ----------
 
 step()  { printf '  %s▸%s %s\n' "${C_DIM}" "${C_RESET}" "$1"; }
@@ -77,24 +71,51 @@ warn()  { printf '  %s!%s %s\n' "${C_YELLOW}" "${C_RESET}" "$1"; }
 err()   { printf '  %s✗%s %s\n' "${C_RED}" "${C_RESET}" "$1" >&2; }
 note()  { printf '    %s%s%s\n' "${C_DIM}" "$1" "${C_RESET}"; }
 
+# Repeat a single character N times.
+_repeat() {
+    local ch="$1" n="$2" out="" i
+    for ((i = 0; i < n; i++)); do out+="$ch"; done
+    printf '%s' "$out"
+}
+
+# Banner with auto-computed inner width based on the longest content line.
+# No matter how short or long each line is, the right "│" always lines up.
 print_banner() {
+    local lines=(
+        "smart-motd"
+        "customizable MOTD for Linux servers"
+        "github.com/${REPO}"
+    )
+    local maxlen=0 s
+    for s in "${lines[@]}"; do
+        (( ${#s} > maxlen )) && maxlen=${#s}
+    done
+    local pad_inner=4
+    local inner=$(( maxlen + pad_inner * 2 ))
+    local hr blank lpad
+    hr=$(_repeat '─' "$inner")
+    blank=$(_repeat ' ' "$inner")
+    lpad=$(_repeat ' ' "$pad_inner")
+
+    _line() {
+        local content="$1" color="${2:-}" rpad
+        rpad=$(_repeat ' ' $((maxlen - ${#content})))
+        printf '  %s│%s%s%s%s%s%s%s%s│%s\n' \
+            "${C_CYAN}" "${C_RESET}" \
+            "$lpad" \
+            "$color" "$content" "${C_RESET}" \
+            "$rpad" "$lpad" \
+            "${C_CYAN}" "${C_RESET}"
+    }
+
     printf '\n'
-    printf '  %s╭───────────────────────────────────────────────────╮%s\n' "${C_CYAN}" "${C_RESET}"
-    printf '  %s│%s                                                   %s│%s\n' "${C_CYAN}" "${C_RESET}" "${C_CYAN}" "${C_RESET}"
-    printf '  %s│%s     %s★%s  %ssmart-motd%s  %s★%s    %scustomizable Linux MOTD%s    %s│%s\n' \
-        "${C_CYAN}" "${C_RESET}" \
-        "${C_BRIGHT_GREEN}" "${C_RESET}" \
-        "${C_BOLD}${C_BRIGHT_CYAN}" "${C_RESET}" \
-        "${C_BRIGHT_GREEN}" "${C_RESET}" \
-        "${C_DIM}" "${C_RESET}" \
-        "${C_CYAN}" "${C_RESET}"
-    printf '  %s│%s                                                   %s│%s\n' "${C_CYAN}" "${C_RESET}" "${C_CYAN}" "${C_RESET}"
-    printf '  %s│%s     %s%s%s     %s│%s\n' \
-        "${C_CYAN}" "${C_RESET}" \
-        "${C_DIM}" "https://github.com/${REPO}" "${C_RESET}" \
-        "${C_CYAN}" "${C_RESET}"
-    printf '  %s│%s                                                   %s│%s\n' "${C_CYAN}" "${C_RESET}" "${C_CYAN}" "${C_RESET}"
-    printf '  %s╰───────────────────────────────────────────────────╯%s\n' "${C_CYAN}" "${C_RESET}"
+    printf '  %s╭%s╮%s\n' "${C_CYAN}" "$hr" "${C_RESET}"
+    printf '  %s│%s%s%s│%s\n' "${C_CYAN}" "${C_RESET}" "$blank" "${C_CYAN}" "${C_RESET}"
+    _line "${lines[0]}" "${C_BOLD}${C_BRIGHT_CYAN}"
+    _line "${lines[1]}" "${C_DIM}"
+    _line "${lines[2]}" "${C_DIM}"
+    printf '  %s│%s%s%s│%s\n' "${C_CYAN}" "${C_RESET}" "$blank" "${C_CYAN}" "${C_RESET}"
+    printf '  %s╰%s╯%s\n' "${C_CYAN}" "$hr" "${C_RESET}"
     printf '\n'
 }
 
@@ -273,8 +294,13 @@ print_summary
 # ---------- run setup wizard ----------
 
 if $RUN_SETUP && [[ -r /dev/tty && -w /dev/tty ]]; then
-    printf '  %sLaunching interactive setup…%s\n\n' "${C_BOLD}" "${C_RESET}"
-    sleep 1
+    printf '  %sPress Enter%s to launch the interactive setup, or %sCtrl+C%s to skip and configure later.\n' \
+        "${C_BOLD}" "${C_RESET}" "${C_BOLD}" "${C_RESET}"
+    printf '  '
+    # Wait for Enter (or Ctrl+C / EOF). If the user does Ctrl+C, the trap
+    # will clean up the workdir and the wizard simply isn't launched.
+    read -r _ </dev/tty || true
+    printf '\n'
     "$PREFIX/bin/motd-setup" </dev/tty
 else
     printf '  %s!%s Non-interactive install: setup wizard skipped.\n' "${C_YELLOW}" "${C_RESET}"

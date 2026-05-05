@@ -180,7 +180,13 @@ preview_kv_sep() {
 
 # ---------- wizard ----------
 
-wizard_init 0 "smart-motd setup"
+# Show the installed version in the wizard's top bar.
+SMART_MOTD_VERSION=$(cat "${SMART_MOTD_PREFIX}/VERSION" 2>/dev/null | tr -d ' \r\n' || echo "")
+if [[ -n "$SMART_MOTD_VERSION" ]]; then
+    wizard_init 0 "smart-motd setup · v${SMART_MOTD_VERSION}"
+else
+    wizard_init 0 "smart-motd setup"
+fi
 
 # --- Page 0: language selection (always shown, hardcoded bilingual) ---
 lang_choice=$(wizard_select \

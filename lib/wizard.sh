@@ -26,6 +26,8 @@ set +u
 
 WIZ_STEP=0
 WIZ_TOTAL=0
+# Title shown in the top bar of every wizard page. The setup script
+# overrides this in wizard_init to include the actual installed version.
 WIZ_MAIN_TITLE="smart-motd setup"
 
 # Step counter is persisted to a temp file so subshell-invoked
@@ -51,6 +53,8 @@ _wiz_step_incr() {
     n=$(<"$WIZ_STEP_FILE")
     n=$((n + 1))
     printf '%d\n' "$n" >"$WIZ_STEP_FILE"
+    # Drop the per-page header cache so the new function reads fresh values.
+    unset _WIZ_HEADER_STEP_CACHE _WIZ_HEADER_COLS_CACHE
 }
 
 _wiz_step_get() {
@@ -190,12 +194,21 @@ wizard_init() {
 
 _wiz_header() {
     local title="$1"
-    local cols; cols=$(_wiz_cols)
     _wiz_home
 
+    # The step number and term width are stable across all redraws of one
+    # wizard function. Calling `cat` and `tput` per keypress added visible
+    # lag in the redraw loop, so we cache them. _wiz_step_incr clears the
+    # cache at the start of each new wizard function, so the next call
+    # re-reads fresh values.
+    if [[ -z "${_WIZ_HEADER_STEP_CACHE:-}" ]]; then
+        _WIZ_HEADER_STEP_CACHE=$(_wiz_step_get)
+        _WIZ_HEADER_COLS_CACHE=$(_wiz_cols)
+    fi
+    local step_n="${_WIZ_HEADER_STEP_CACHE}"
+    local cols="${_WIZ_HEADER_COLS_CACHE}"
+
     local step=""
-    local step_n
-    step_n=$(_wiz_step_get)
     if (( step_n > 0 )); then
         if (( WIZ_TOTAL > 0 )); then
             step="step ${step_n} of ${WIZ_TOTAL} "
@@ -343,18 +356,18 @@ wizard_select() {
     local n=${#options[@]}
     (( sel < 0 || sel >= n )) && sel=0
 
-    _wiz_hide_cursor
-    local key seq i cols max_label label viewport_size viewport_top viewport_end
-    viewport_top=0
-    while true; do
-        _wiz_header "$title"
-        _wiz_help "$help"
-        cols=$(_wiz_cols)
-        max_label=$(( cols - 6 ))
-        (( max_label < 10 )) && max_label=10
-        viewport_size=$(_wiz_viewport_size "$help")
+    # Cache layout values OUTSIDE the redraw loop — calling tput / wc / awk
+    # via $(...) on every keypress was the source of visible flicker.
+    local cols max_label viewport_size
+    cols=$(_wiz_cols)
+    max_label=$(( cols - 6 ))
+    (( max_label < 10 )) && max_label=10
+    viewport_size=$(_wiz_viewport_size "$help")
 
-        # Keep selected item visible by sliding the viewport.
+    _wiz_hide_cursor
+    local key seq i label viewport_top=0 viewport_end
+    while true; do
+        # Adjust viewport to keep selected visible.
         if (( sel < viewport_top )); then
             viewport_top=$sel
         elif (( sel >= viewport_top + viewport_size )); then
@@ -362,6 +375,9 @@ wizard_select() {
         fi
         viewport_end=$((viewport_top + viewport_size))
         (( viewport_end > n )) && viewport_end=$n
+
+        _wiz_header "$title"
+        _wiz_help "$help"
 
         if (( viewport_top > 0 )); then
             _p "  \e[2m↑ $viewport_top more above\e[0m\n"
@@ -416,20 +432,16 @@ wizard_select_preview() {
     local n=${#options[@]}
     (( sel < 0 || sel >= n )) && sel=0
 
-    _wiz_hide_cursor
-    local key seq i cols max_label label viewport_size viewport_top viewport_end
-    # The preview area below the option list eats roughly 8 lines (theme
-    # preview is the tallest at ~7 lines including its own headings/rules).
-    local preview_reserved=10
-    viewport_top=0
-    while true; do
-        _wiz_header "$title"
-        _wiz_help "$help"
-        cols=$(_wiz_cols)
-        max_label=$(( cols - 6 ))
-        (( max_label < 10 )) && max_label=10
-        viewport_size=$(_wiz_viewport_size "$help" "$preview_reserved")
+    # Cache layout outside loop. Reserve ~10 lines for the preview area.
+    local cols max_label viewport_size preview_reserved=10
+    cols=$(_wiz_cols)
+    max_label=$(( cols - 6 ))
+    (( max_label < 10 )) && max_label=10
+    viewport_size=$(_wiz_viewport_size "$help" "$preview_reserved")
 
+    _wiz_hide_cursor
+    local key seq i label viewport_top=0 viewport_end
+    while true; do
         if (( sel < viewport_top )); then
             viewport_top=$sel
         elif (( sel >= viewport_top + viewport_size )); then
@@ -437,6 +449,9 @@ wizard_select_preview() {
         fi
         viewport_end=$((viewport_top + viewport_size))
         (( viewport_end > n )) && viewport_end=$n
+
+        _wiz_header "$title"
+        _wiz_help "$help"
 
         if (( viewport_top > 0 )); then
             _p "  \e[2m↑ $viewport_top more above\e[0m\n"
@@ -504,17 +519,16 @@ wizard_multiselect() {
         options[i]="${options[i]:1}"
     done
 
-    _wiz_hide_cursor
-    local key seq cols max_label label mark viewport_size viewport_top viewport_end
-    viewport_top=0
-    while true; do
-        _wiz_header "$title"
-        _wiz_help "$help"
-        cols=$(_wiz_cols)
-        max_label=$(( cols - 10 ))
-        (( max_label < 10 )) && max_label=10
-        viewport_size=$(_wiz_viewport_size "$help")
+    # Cache layout outside loop.
+    local cols max_label viewport_size
+    cols=$(_wiz_cols)
+    max_label=$(( cols - 10 ))
+    (( max_label < 10 )) && max_label=10
+    viewport_size=$(_wiz_viewport_size "$help")
 
+    _wiz_hide_cursor
+    local key seq label mark viewport_top=0 viewport_end
+    while true; do
         if (( sel < viewport_top )); then
             viewport_top=$sel
         elif (( sel >= viewport_top + viewport_size )); then
@@ -522,6 +536,9 @@ wizard_multiselect() {
         fi
         viewport_end=$((viewport_top + viewport_size))
         (( viewport_end > n )) && viewport_end=$n
+
+        _wiz_header "$title"
+        _wiz_help "$help"
 
         if (( viewport_top > 0 )); then
             _p "  \e[2m↑ $viewport_top more above\e[0m\n"

@@ -4,6 +4,7 @@
 set -u
 
 SMART_MOTD_PREFIX="${SMART_MOTD_PREFIX:-/usr/local/lib/smart-motd}"
+SMART_MOTD_REPO="${SMART_MOTD_REPO:-erneywhite/smart-motd}"
 
 usage() {
     cat <<EOF
@@ -17,13 +18,34 @@ Commands:
   update-cache   Refresh cached values (updates count, SSL, public IP, …).
   edit           Open the config file in \$EDITOR.
   status         Show install paths, distro detection, cache freshness.
+  version        Show installed version (and check for updates).
   uninstall      Remove smart-motd from this system.
-  version        Show version.
   help           Show this help.
 
 Config file: /etc/smart-motd/config.conf
 Cache dir:   /var/cache/smart-motd
 EOF
+}
+
+# Read the installed version (or "unknown").
+_local_version() {
+    cat "${SMART_MOTD_PREFIX}/VERSION" 2>/dev/null | tr -d ' \r\n' || true
+}
+
+# Fetch the latest release tag from GitHub. Returns empty string on failure.
+_latest_version() {
+    command -v curl >/dev/null 2>&1 || return
+    # Try the releases/latest endpoint first; fall back to raw VERSION on main.
+    local v
+    v=$(curl -fsS --max-time 4 "https://api.github.com/repos/${SMART_MOTD_REPO}/releases/latest" 2>/dev/null \
+        | grep '"tag_name"' \
+        | head -1 \
+        | sed -E 's/.*"v?([^"]+)".*/\1/')
+    if [[ -z "$v" ]]; then
+        v=$(curl -fsS --max-time 4 "https://raw.githubusercontent.com/${SMART_MOTD_REPO}/main/VERSION" 2>/dev/null \
+            | tr -d ' \r\n')
+    fi
+    printf '%s' "$v"
 }
 
 cmd="${1:-help}"
@@ -34,14 +56,15 @@ case "$cmd" in
     edit)         exec "${EDITOR:-vi}" /etc/smart-motd/config.conf ;;
     uninstall)    exec "${SMART_MOTD_PREFIX}/bin/motd-uninstall" ;;
     status)
-        echo "smart-motd"
-        echo "  prefix:   $SMART_MOTD_PREFIX"
-        echo "  config:   /etc/smart-motd/config.conf"
-        echo "  cache:    /var/cache/smart-motd"
+        local_v=$(_local_version)
+        printf 'smart-motd v%s\n' "${local_v:-unknown}"
+        printf '  prefix:   %s\n' "$SMART_MOTD_PREFIX"
+        printf '  config:   /etc/smart-motd/config.conf\n'
+        printf '  cache:    /var/cache/smart-motd\n'
         if [[ -r /etc/os-release ]]; then
             # shellcheck disable=SC1091
             . /etc/os-release
-            echo "  distro:   ${ID:-unknown} (${VERSION_ID:-?})"
+            printf '  distro:   %s (%s)\n' "${ID:-unknown}" "${VERSION_ID:-?}"
         fi
         echo
         echo "Cache files:"
@@ -52,7 +75,20 @@ case "$cmd" in
         fi
         ;;
     version)
-        cat "${SMART_MOTD_PREFIX}/VERSION" 2>/dev/null || echo "unknown"
+        local_v=$(_local_version)
+        printf 'smart-motd v%s\n' "${local_v:-unknown}"
+        # Best-effort online update check
+        if command -v curl >/dev/null 2>&1; then
+            latest_v=$(_latest_version)
+            if [[ -z "$latest_v" ]]; then
+                printf '  (could not check for updates — no network or GitHub unreachable)\n'
+            elif [[ "$latest_v" == "$local_v" ]]; then
+                printf '  ✓ up to date\n'
+            else
+                printf '  ↑ newer version available: v%s\n' "$latest_v"
+                printf '  ↳ upgrade: curl -fsSL https://raw.githubusercontent.com/%s/main/install.sh | sudo bash\n' "$SMART_MOTD_REPO"
+            fi
+        fi
         ;;
     help|-h|--help) usage ;;
     *)            usage; exit 1 ;;
