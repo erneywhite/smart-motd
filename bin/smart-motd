@@ -19,6 +19,7 @@ Commands:
   edit           Open the config file in \$EDITOR.
   status         Show install paths, distro detection, cache freshness.
   version        Show installed version (and check for updates).
+  upgrade        Re-run the installer to upgrade to the latest release.
   uninstall      Remove smart-motd from this system.
   help           Show this help.
 
@@ -86,9 +87,23 @@ case "$cmd" in
                 printf '  ✓ up to date\n'
             else
                 printf '  ↑ newer version available: v%s\n' "$latest_v"
-                printf '  ↳ upgrade: curl -fsSL https://raw.githubusercontent.com/%s/main/install.sh | sudo bash\n' "$SMART_MOTD_REPO"
+                printf '  ↳ upgrade: sudo smart-motd upgrade\n'
             fi
         fi
+        ;;
+    upgrade)
+        if [[ "$EUID" -ne 0 ]]; then
+            echo "smart-motd upgrade must be run as root (sudo smart-motd upgrade)." >&2
+            exit 1
+        fi
+        if ! command -v curl >/dev/null 2>&1; then
+            echo "smart-motd upgrade requires curl." >&2
+            exit 1
+        fi
+        printf 'Downloading and re-running installer from %s…\n\n' "$SMART_MOTD_REPO"
+        # Pipe install.sh into bash. Stdin to bash is the curl pipe, but
+        # the installer reopens /dev/tty itself for the wizard.
+        curl -fsSL "https://raw.githubusercontent.com/${SMART_MOTD_REPO}/main/install.sh" | bash
         ;;
     help|-h|--help) usage ;;
     *)            usage; exit 1 ;;

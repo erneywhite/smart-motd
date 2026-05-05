@@ -122,7 +122,19 @@ _wiz_clear()       { printf '\e[2J\e[H' >/dev/tty 2>/dev/null || true; }
 _wiz_home()        { printf '\e[H' >/dev/tty 2>/dev/null || true; }
 _wiz_clear_tail()  { printf '\e[J' >/dev/tty 2>/dev/null || true; }
 
-trap '_wiz_show_cursor' EXIT INT TERM
+# Restore terminal state (cursor) on any exit. For SIGINT/SIGTERM we
+# also explicitly exit — without an explicit exit in the trap, bash
+# would just resume after the trap fires, leaving the user stuck inside
+# the wizard. Exit code 130 is the conventional "killed by SIGINT".
+_wiz_on_exit()    { _wiz_show_cursor; }
+_wiz_on_signal()  {
+    _wiz_show_cursor
+    # Move cursor down past the wizard chrome and print a polite message.
+    printf '\n\n  \e[2mAborted — your existing config is unchanged.\e[0m\n' >/dev/tty 2>/dev/null || true
+    exit 130
+}
+trap '_wiz_on_exit' EXIT
+trap '_wiz_on_signal' INT TERM
 
 # Internal: print to terminal (not stdout). \e[K (clear from cursor to
 # end of line) is injected after every \n in the argument, so that any

@@ -13,6 +13,11 @@
 
 set -euo pipefail
 
+# Ensure Ctrl+C / TERM aborts the installer cleanly. Without an explicit
+# trap, signal handling inside `read -r` and pipelines is inconsistent
+# across shells/distros and the user can get stuck.
+trap 'printf "\n\033[33m! Installation aborted by user.\033[0m\n" >&2; exit 130' INT TERM
+
 REPO="${SMART_MOTD_REPO:-erneywhite/smart-motd}"
 BRANCH="${SMART_MOTD_BRANCH:-main}"
 PREFIX="/usr/local/lib/smart-motd"
