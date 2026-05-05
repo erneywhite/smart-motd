@@ -51,7 +51,6 @@ THEME="classic"
 COLOR_THEME="default"
 FOOTER_TEXT=""
 
-# Section toggles (default-on for the basics, auto for tool-detected, off for opt-ins)
 HEADER_ENABLED=true
 WELCOME_ENABLED=true
 WARNING_ENABLED=true
@@ -72,8 +71,6 @@ LASTLOGIN_ENABLED=true
 WEATHER_ENABLED=false
 FOOTER_ENABLED=true
 
-# ---------- load existing config ----------
-
 EXISTING_CONFIG=false
 if [[ -r "$SMART_MOTD_CONFIG" ]]; then
     EXISTING_CONFIG=true
@@ -82,6 +79,14 @@ if [[ -r "$SMART_MOTD_CONFIG" ]]; then
 fi
 apply_theme
 apply_color_theme
+
+# ---------- i18n ----------
+# `_l "english" "русский"` returns one of them based on $WIZ_LANG.
+# Default: English. Kept simple — only wizard prompts/help are localized.
+# All saved config values stay in English (machine-readable).
+
+WIZ_LANG="en"
+_l() { case "$WIZ_LANG" in ru) printf '%s' "$2" ;; *) printf '%s' "$1" ;; esac; }
 
 # ---------- helpers ----------
 
@@ -102,12 +107,7 @@ write_array() {
     printf ')\n'
 }
 
-# Map a "yes"/"no" string back to true/false.
-yn_bool() { case "$1" in Yes|yes|y|Y|true) echo true ;; *) echo false ;; esac; }
-
 # ---------- preview renderers ----------
-# Each takes the option text and prints lines to stdout. They run in subshells
-# so they can mutate THEME/COLOR_THEME without leaking to the wizard.
 
 preview_theme() {
     local name="$1"
@@ -141,27 +141,22 @@ preview_color_theme() {
 preview_header_style() {
     local style="$1"
     case "$style" in
-        spaced)
-            printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "$(spaced_text "Smart MOTD")" "${C_RESET}" ;;
-        plain)
-            printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "Smart MOTD" "${C_RESET}" ;;
-        upper)
-            printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "SMART MOTD" "${C_RESET}" ;;
-        lower)
-            printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "smart motd" "${C_RESET}" ;;
+        spaced) printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "$(spaced_text "Smart MOTD")" "${C_RESET}" ;;
+        plain)  printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "Smart MOTD" "${C_RESET}" ;;
+        upper)  printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "SMART MOTD" "${C_RESET}" ;;
+        lower)  printf '%s%s%s\n' "${C_BOLD}${C_CYAN}" "smart motd" "${C_RESET}" ;;
     esac
     section_thick_rule
 }
 
 preview_kv_sep() {
-    local sep_label="$1"
-    local sep
+    local sep_label="$1" sep
     case "$sep_label" in
-        "Colon (:)")           sep=":" ;;
-        "Vertical bar (│)")    sep="│" ;;
-        "Triangle (▸)")        sep="▸" ;;
-        "Arrow (→)")           sep="→" ;;
-        "Equals (=)")          sep="=" ;;
+        "Colon (:)")        sep=":" ;;
+        "Vertical bar (│)") sep="│" ;;
+        "Triangle (▸)")     sep="▸" ;;
+        "Arrow (→)")        sep="→" ;;
+        "Equals (=)")       sep="=" ;;
     esac
     (
         THEME_KV_SEPARATOR="$sep"
@@ -171,11 +166,26 @@ preview_kv_sep() {
     )
 }
 
-# ---------- wizard pages ----------
+# ---------- wizard ----------
 
 wizard_init 0 "smart-motd setup"
 
-intro_body="Welcome! This wizard walks you through every section of your MOTD.
+# --- Page 0: language selection (always shown, hardcoded bilingual) ---
+lang_choice=$(wizard_select \
+    "Choose language / Выберите язык" \
+    "All wizard prompts will be shown in this language. Your config values and the rendered MOTD stay in English / Системный язык MOTD не изменится — только подсказки визарда." \
+    0 -- \
+    "English" "Русский")
+case "$lang_choice" in
+    "Русский") WIZ_LANG="ru" ;;
+    *)          WIZ_LANG="en" ;;
+esac
+WIZ_STEP=0  # don't count language picker in step counter
+
+# --- intro ---
+
+intro_body=$(_l \
+"Welcome! This wizard walks you through every section of your MOTD.
 
 For each question:
   · ↑ / ↓ (or k / j) to navigate
@@ -185,40 +195,52 @@ For each question:
   · Ctrl+C to abort (your existing config is left untouched)
 
 Detected: ${DISTRO_ID} (family: ${DISTRO_FAMILY})
-Existing config: $($EXISTING_CONFIG && echo "loaded as defaults" || echo "none — using built-in defaults")"
+Existing config: $($EXISTING_CONFIG && echo \"loaded as defaults\" || echo \"none — using built-in defaults\")" \
+"Добро пожаловать! Визард проведёт через все секции вашего MOTD.
 
-wizard_intro "Welcome to smart-motd" "$intro_body"
+Управление:
+  · ↑ / ↓ (или k / j) — навигация
+  · Space — переключить чекбокс
+  · Enter — подтвердить
+  · y / n — быстрый ответ для да/нет
+  · Ctrl+C — отменить (текущий конфиг не пострадает)
 
-# --- 1. Section selector (multiselect) ---
+Дистрибутив: ${DISTRO_ID} (семейство: ${DISTRO_FAMILY})
+Существующий конфиг: $($EXISTING_CONFIG && echo \"загружен как значения по умолчанию\" || echo \"нет — используются встроенные defaults\")")
 
-# Build the multiselect entries with current state encoded as 1/0 prefix.
+wizard_intro "$(_l "Welcome to smart-motd" "Добро пожаловать в smart-motd")" "$intro_body"
+
+# --- Section selector (multiselect) ---
+
 _pre() { case "$1" in true|auto) echo 1 ;; *) echo 0 ;; esac; }
+
 mapfile -t selected_sections < <(wizard_multiselect \
-    "Sections to enable" \
-    "Pick which sections appear in the MOTD. You can re-run setup any time. Sections marked 'auto' will skip themselves on hosts without the relevant tool (docker, smartctl, etc.)." \
+    "$(_l "Sections to enable" "Включаемые секции")" \
+    "$(_l \
+"Pick which sections appear in the MOTD. You can re-run setup any time. Sections marked 'auto' will skip themselves on hosts without the relevant tool (docker, smartctl, etc.)." \
+"Отметьте секции, которые будут показываться в MOTD. Setup можно перезапускать. Секции с 'auto' автоматически скроются, если соответствующий инструмент (docker, smartctl и т.д.) не установлен.")" \
     -- \
-    "$(_pre "$HEADER_ENABLED")Header banner" \
-    "$(_pre "$WELCOME_ENABLED")Welcome lines (URLs, admin, etc.)" \
-    "$(_pre "$WARNING_ENABLED")Warning / legal banner" \
-    "$(_pre "$SYSTEM_ENABLED")System status (uptime, load, mem, disk)" \
-    "$(_pre "$MAINTENANCE_ENABLED")Maintenance (reboot required)" \
-    "$(_pre "$UPDATES_ENABLED")Pending package updates" \
-    "$(_pre "$SERVICES_ENABLED")systemd services" \
-    "$(_pre "$NETWORK_ENABLED")Network (interfaces + public IP)" \
-    "$(_pre "$SSL_ENABLED")SSL certificates" \
-    "$(_pre "$SECURITY_ENABLED")Security (failed SSH + fail2ban)" \
-    "$(_pre "$TEMPERATURE_ENABLED")CPU temperature" \
-    "$(_pre "$SMART_ENABLED")Disk SMART status" \
-    "$(_pre "$DOCKER_ENABLED")Docker containers" \
-    "$(_pre "$PODMAN_ENABLED")Podman containers" \
-    "$(_pre "$KUBERNETES_ENABLED")Kubernetes summary" \
-    "$(_pre "$DIRECTORIES_ENABLED")Monitored directories" \
-    "$(_pre "$LASTLOGIN_ENABLED")Recent logins" \
-    "$(_pre "$WEATHER_ENABLED")Weather (wttr.in)" \
+    "$(_pre "$HEADER_ENABLED")$(_l "Header banner" "Баннер-заголовок")" \
+    "$(_pre "$WELCOME_ENABLED")$(_l "Welcome lines (URLs, admin, etc.)" "Строки приветствия (URL'ы, админ и т.п.)")" \
+    "$(_pre "$WARNING_ENABLED")$(_l "Warning / legal banner" "Предупреждение / юридический баннер")" \
+    "$(_pre "$SYSTEM_ENABLED")$(_l "System status (uptime, load, mem, disk)" "Состояние системы (uptime, load, память, диск)")" \
+    "$(_pre "$MAINTENANCE_ENABLED")$(_l "Maintenance (reboot required)" "Обслуживание (требуется перезагрузка)")" \
+    "$(_pre "$UPDATES_ENABLED")$(_l "Pending package updates" "Доступные обновления пакетов")" \
+    "$(_pre "$SERVICES_ENABLED")$(_l "systemd services" "systemd-сервисы")" \
+    "$(_pre "$NETWORK_ENABLED")$(_l "Network (interfaces + public IP)" "Сеть (интерфейсы + публичный IP)")" \
+    "$(_pre "$SSL_ENABLED")$(_l "SSL certificates" "SSL-сертификаты")" \
+    "$(_pre "$SECURITY_ENABLED")$(_l "Security (failed SSH + fail2ban)" "Безопасность (failed SSH + fail2ban)")" \
+    "$(_pre "$TEMPERATURE_ENABLED")$(_l "CPU temperature" "Температура CPU")" \
+    "$(_pre "$SMART_ENABLED")$(_l "Disk SMART status" "Состояние дисков (SMART)")" \
+    "$(_pre "$DOCKER_ENABLED")$(_l "Docker containers" "Docker-контейнеры")" \
+    "$(_pre "$PODMAN_ENABLED")$(_l "Podman containers" "Podman-контейнеры")" \
+    "$(_pre "$KUBERNETES_ENABLED")$(_l "Kubernetes summary" "Kubernetes (краткая сводка)")" \
+    "$(_pre "$DIRECTORIES_ENABLED")$(_l "Monitored directories" "Отслеживаемые каталоги")" \
+    "$(_pre "$LASTLOGIN_ENABLED")$(_l "Recent logins" "Недавние логины")" \
+    "$(_pre "$WEATHER_ENABLED")$(_l "Weather (wttr.in)" "Погода (wttr.in)")" \
 )
 
-# Reset all toggles to false, then enable picked ones. For tool-detected
-# sections, prefer "auto" over "true" so they self-skip on non-applicable hosts.
+# Reset toggles, then enable picked. We match on a substring so localized labels work.
 HEADER_ENABLED=false; WELCOME_ENABLED=false; WARNING_ENABLED=false
 SYSTEM_ENABLED=false; MAINTENANCE_ENABLED=false; UPDATES_ENABLED=false
 SERVICES_ENABLED=false; NETWORK_ENABLED=false; SSL_ENABLED=false
@@ -228,135 +250,155 @@ DIRECTORIES_ENABLED=false; LASTLOGIN_ENABLED=false; WEATHER_ENABLED=false
 
 for s in "${selected_sections[@]}"; do
     case "$s" in
-        "Header banner")                   HEADER_ENABLED=true ;;
-        "Welcome lines"*)                  WELCOME_ENABLED=true ;;
-        "Warning / legal banner")          WARNING_ENABLED=true ;;
-        "System status"*)                  SYSTEM_ENABLED=true ;;
-        "Maintenance"*)                    MAINTENANCE_ENABLED=true ;;
-        "Pending package updates")         UPDATES_ENABLED=true ;;
-        "systemd services")                SERVICES_ENABLED=true ;;
-        "Network"*)                        NETWORK_ENABLED=true ;;
-        "SSL certificates")                SSL_ENABLED=true ;;
-        "Security"*)                       SECURITY_ENABLED=true ;;
-        "CPU temperature")                 TEMPERATURE_ENABLED=auto ;;
-        "Disk SMART status")               SMART_ENABLED=auto ;;
-        "Docker containers")               DOCKER_ENABLED=auto ;;
-        "Podman containers")               PODMAN_ENABLED=auto ;;
-        "Kubernetes summary")              KUBERNETES_ENABLED=auto ;;
-        "Monitored directories")           DIRECTORIES_ENABLED=true ;;
-        "Recent logins")                   LASTLOGIN_ENABLED=true ;;
-        "Weather"*)                        WEATHER_ENABLED=true ;;
+        *Header*|*Баннер*)                            HEADER_ENABLED=true ;;
+        *Welcome*|*приветствия*)                       WELCOME_ENABLED=true ;;
+        *Warning*|*Предупреждение*)                    WARNING_ENABLED=true ;;
+        *"System status"*|*"Состояние системы"*)       SYSTEM_ENABLED=true ;;
+        *Maintenance*|*Обслуживание*)                   MAINTENANCE_ENABLED=true ;;
+        *"package updates"*|*"обновления пакетов"*)    UPDATES_ENABLED=true ;;
+        *"systemd"*)                                    SERVICES_ENABLED=true ;;
+        *Network*|*Сеть*)                               NETWORK_ENABLED=true ;;
+        *SSL*)                                          SSL_ENABLED=true ;;
+        *Security*|*Безопасность*)                      SECURITY_ENABLED=true ;;
+        *temperature*|*Температура*)                    TEMPERATURE_ENABLED=auto ;;
+        *SMART*)                                        SMART_ENABLED=auto ;;
+        *Docker*)                                       DOCKER_ENABLED=auto ;;
+        *Podman*)                                       PODMAN_ENABLED=auto ;;
+        *Kubernetes*)                                   KUBERNETES_ENABLED=auto ;;
+        *directories*|*каталоги*)                       DIRECTORIES_ENABLED=true ;;
+        *"Recent logins"*|*"Недавние логины"*)          LASTLOGIN_ENABLED=true ;;
+        *Weather*|*Погода*)                             WEATHER_ENABLED=true ;;
     esac
 done
 
-# --- 2. Theme picker (preview) ---
+# --- Theme picker ---
 
 theme_choice=$(wizard_select_preview \
-    "Visual theme" \
-    "Picks the rule characters and section heading style." \
+    "$(_l "Visual theme" "Визуальная тема")" \
+    "$(_l \
+"Choose the rule characters and section heading style for the banner. Live preview below shows how it will look." \
+"Выберите символы рамок и стиль заголовков. Предпросмотр снизу покажет результат.")" \
     0 preview_theme -- \
-    "classic" "slim" "heavy" "double" "dotted" "ascii")
+    "classic" "slim" "heavy" "double" "dotted" "ascii" "arrows" "stars" "wave" "block" "pipes" "retro" "compact")
 THEME="$theme_choice"
 apply_theme
 
-# --- 3. Color theme picker (preview) ---
+# --- Color theme ---
 
 color_choice=$(wizard_select_preview \
-    "Color palette" \
-    "Sets the accent color used by section headings. Status colors (green/yellow/red) stay intact." \
+    "$(_l "Color palette" "Цветовая палитра")" \
+    "$(_l \
+"Sets the accent color used by section headings. Status colors (green/yellow/red) stay intact." \
+"Задаёт основной цвет заголовков секций. Цвета статусов (зелёный/жёлтый/красный) не меняются.")" \
     0 preview_color_theme -- \
     "default" "ocean" "forest" "sunset" "amber" "mono")
 COLOR_THEME="$color_choice"
 apply_color_theme
 
-# --- 4. KV separator (preview) ---
+# --- KV separator ---
 
 sep_choice=$(wizard_select_preview \
-    "Key/Value separator" \
-    "Character between a label and its value." \
+    "$(_l "Key/Value separator" "Разделитель ключ/значение")" \
+    "$(_l \
+"Character between a label and its value (Hostname : web-01)." \
+"Символ между меткой и значением (Hostname : web-01).")" \
     0 preview_kv_sep -- \
     "Colon (:)" "Vertical bar (│)" "Triangle (▸)" "Arrow (→)" "Equals (=)")
 case "$sep_choice" in
-    "Colon (:)")           THEME_KV_SEPARATOR=":" ;;
-    "Vertical bar (│)")    THEME_KV_SEPARATOR="│" ;;
-    "Triangle (▸)")        THEME_KV_SEPARATOR="▸" ;;
-    "Arrow (→)")           THEME_KV_SEPARATOR="→" ;;
-    "Equals (=)")          THEME_KV_SEPARATOR="=" ;;
+    "Colon (:)")        THEME_KV_SEPARATOR=":" ;;
+    "Vertical bar (│)") THEME_KV_SEPARATOR="│" ;;
+    "Triangle (▸)")     THEME_KV_SEPARATOR="▸" ;;
+    "Arrow (→)")        THEME_KV_SEPARATOR="→" ;;
+    "Equals (=)")       THEME_KV_SEPARATOR="=" ;;
 esac
-THEME="custom"  # forces the saved THEME_KV_SEPARATOR to win
+THEME="custom"
 
-# --- 5. Header text ---
+# --- Header text ---
 
 if [[ "$HEADER_ENABLED" == "true" ]]; then
     HEADER_TEXT=$(wizard_text \
-        "Header text" \
-        "The big banner shown at the very top of every login. Usually your project or company name." \
+        "$(_l "Header text" "Текст заголовка")" \
+        "$(_l \
+"The big banner shown at the very top of every login. Usually your project or company name." \
+"Большой баннер сверху при каждом логине. Обычно — название проекта или компании.")" \
         "$HEADER_TEXT")
 
     style_choice=$(wizard_select_preview \
-        "Header style" \
-        "How the header text should be rendered." \
+        "$(_l "Header style" "Стиль заголовка")" \
+        "$(_l "How the header text should be rendered." "Как именно отображать текст заголовка.")" \
         0 preview_header_style -- \
         "spaced" "plain" "upper" "lower")
     case "$style_choice" in
         spaced) HEADER_SPACED=true ;;
         *)      HEADER_SPACED=false ;;
     esac
-    # 'upper'/'lower' transform the text outright:
     case "$style_choice" in
         upper) HEADER_TEXT="${HEADER_TEXT^^}" ;;
         lower) HEADER_TEXT="${HEADER_TEXT,,}" ;;
     esac
 fi
 
-# --- 6. Welcome lines ---
+# --- Welcome ---
 
 if [[ "$WELCOME_ENABLED" == "true" ]]; then
     WELCOME_TITLE=$(wizard_text \
-        "Welcome title" \
-        "One short line shown right after the banner, e.g. 'web-01 (production)'. Leave blank to skip." \
+        "$(_l "Welcome title" "Заголовок приветствия")" \
+        "$(_l \
+"One short line shown right after the banner, e.g. 'web-01 (production)'. Leave blank to skip." \
+"Одна короткая строка сразу под баннером, например 'web-01 (production)'. Оставьте пустым чтобы пропустить.")" \
         "$WELCOME_TITLE")
 
     mapfile -t WELCOME_LINES < <(wizard_list \
-        "Welcome KV lines" \
-        "Custom labeled lines under the welcome title. Format: Label|Value (e.g. Web|https://example.com, Admin|alice)." \
+        "$(_l "Welcome KV lines" "Строки приветствия (Label|Value)")" \
+        "$(_l \
+"Custom labeled lines under the welcome title. Format: Label|Value (e.g. Web|https://example.com, Admin|alice)." \
+"Произвольные строки под заголовком приветствия. Формат: Label|Value (например Web|https://example.com, Admin|alice).")" \
         "${WELCOME_LINES[@]}")
 fi
 
-# --- 7. Warning / legal banner ---
+# --- Warning ---
 
 if [[ "$WARNING_ENABLED" == "true" ]]; then
     mapfile -t WARNING_LINES < <(wizard_list \
-        "Warning lines" \
-        "The legal / authorized-access notice. The first line is highlighted." \
+        "$(_l "Warning lines" "Строки предупреждения")" \
+        "$(_l \
+"The legal / authorized-access notice. The first line is highlighted." \
+"Юридическое предупреждение / уведомление об авторизованном доступе. Первая строка выделяется.")" \
         "${WARNING_LINES[@]}")
 fi
 
-# --- 8. System disk paths ---
+# --- System ---
 
 if [[ "$SYSTEM_ENABLED" == "true" ]]; then
     mapfile -t SYSTEM_DISK_PATHS < <(wizard_list \
-        "Disk mountpoints to display" \
-        "Each entry shows '<used> / <total> (<pct>% used)'. Common picks: /, /var, /home, /srv." \
+        "$(_l "Disk mountpoints to display" "Точки монтирования дисков")" \
+        "$(_l \
+"Each entry shows '<used> / <total> (<pct>% used)'. Common picks: /, /var, /home, /srv." \
+"Для каждой точки покажется '<занято> / <всего> (<%> used)'. Типичные варианты: /, /var, /home, /srv.")" \
         "${SYSTEM_DISK_PATHS[@]}")
     [[ ${#SYSTEM_DISK_PATHS[@]} -eq 0 ]] && SYSTEM_DISK_PATHS=("/")
 fi
 
-# --- 9. systemd services ---
+# --- Services ---
 
 if [[ "$SERVICES_ENABLED" == "true" ]]; then
     mapfile -t SERVICES_LIST < <(wizard_list \
-        "systemd units to monitor" \
-        "Each shows active/failed/inactive with color. Add unit names without .service (e.g. nginx, postgresql, redis-server)." \
+        "$(_l "systemd units to monitor" "systemd-юниты для отслеживания")" \
+        "$(_l \
+"Each shows active/failed/inactive with color. Add unit names without .service (e.g. nginx, postgresql, redis-server)." \
+"Для каждого покажется active/failed/inactive с цветом. Имена без .service (например nginx, postgresql, redis-server).")" \
         "${SERVICES_LIST[@]}")
     [[ ${#SERVICES_LIST[@]} -eq 0 ]] && SERVICES_ENABLED=false
 fi
 
-# --- 10. SSL certs ---
+# --- SSL ---
 
 if [[ "$SSL_ENABLED" == "true" ]]; then
-    if wizard_yesno "Auto-discover Let's Encrypt certs?" \
-        "Look in /etc/letsencrypt/live/* and report expiry days for each cert found. Recommended if you use Certbot." \
+    if wizard_yesno \
+        "$(_l "Auto-discover Let's Encrypt certs?" "Авто-поиск Let's Encrypt сертификатов?")" \
+        "$(_l \
+"Look in /etc/letsencrypt/live/* and report expiry days for each cert found. Recommended if you use Certbot." \
+"Сканирует /etc/letsencrypt/live/* и показывает дни до истечения каждого найденного сертификата. Рекомендуется если используется Certbot.")" \
         "$([[ "$SSL_AUTODISCOVER_LETSENCRYPT" == "true" ]] && echo y || echo n)"; then
         SSL_AUTODISCOVER_LETSENCRYPT=true
     else
@@ -364,24 +406,34 @@ if [[ "$SSL_ENABLED" == "true" ]]; then
     fi
 
     mapfile -t SSL_DOMAINS < <(wizard_list \
-        "Additional SSL targets" \
-        "Optional. Each entry can be:
+        "$(_l "Additional SSL targets" "Дополнительные SSL-цели")" \
+        "$(_l \
+"Optional. Each entry can be:
   · 'example.com'         — remote check on port 443
   · 'example.com:8443'    — remote check on custom port
   · '/path/to/cert.pem'   — local PEM file" \
+"Опционально. Каждая строка может быть:
+  · 'example.com'         — удалённая проверка на порту 443
+  · 'example.com:8443'    — удалённая проверка на нестандартном порту
+  · '/path/to/cert.pem'   — локальный PEM-файл")" \
         "${SSL_DOMAINS[@]}")
 
     SSL_WARN_DAYS=$(wizard_text \
-        "SSL warning threshold" \
-        "Number of days before expiry that should trigger a yellow warning." \
+        "$(_l "SSL warning threshold" "Порог предупреждения для SSL")" \
+        "$(_l \
+"Number of days before expiry that should trigger a yellow warning." \
+"За сколько дней до истечения сертификата показывать жёлтое предупреждение.")" \
         "$SSL_WARN_DAYS")
 fi
 
-# --- 11. Network ---
+# --- Network ---
 
 if [[ "$NETWORK_ENABLED" == "true" ]]; then
-    if wizard_yesno "Show public IP?" \
-        "Calls api.ipify.org (cached for 5 min). Disable on air-gapped hosts." \
+    if wizard_yesno \
+        "$(_l "Show public IP?" "Показывать публичный IP?")" \
+        "$(_l \
+"Calls api.ipify.org (cached for 5 min). Disable on air-gapped hosts." \
+"Запрашивает api.ipify.org (кешируется на 5 мин). Отключите на изолированных серверах.")" \
         "$([[ "$NETWORK_SHOW_PUBLIC_IP" == "true" ]] && echo y || echo n)"; then
         NETWORK_SHOW_PUBLIC_IP=true
     else
@@ -389,40 +441,48 @@ if [[ "$NETWORK_ENABLED" == "true" ]]; then
     fi
 fi
 
-# --- 12. Docker filter ---
+# --- Docker filter ---
 
 if [[ "$DOCKER_ENABLED" != "false" ]]; then
     DOCKER_FILTER=$(wizard_text \
-        "Docker name filter" \
-        "Optional regex to limit which containers are listed by name (e.g. '^web|^api'). Leave blank for all." \
+        "$(_l "Docker name filter" "Фильтр имён Docker-контейнеров")" \
+        "$(_l \
+"Optional regex to limit which containers are listed by name (e.g. '^web|^api'). Leave blank for all." \
+"Опциональный regex для фильтрации контейнеров по имени (например '^web|^api'). Пусто = все.")" \
         "$DOCKER_FILTER")
 fi
 
-# --- 13. Monitored directories ---
+# --- Directories ---
 
 if [[ "$DIRECTORIES_ENABLED" == "true" ]]; then
     mapfile -t DIRECTORIES_LIST < <(wizard_list \
-        "Monitored directories" \
-        "Show 'du -sh' for each path (cached for 5 min). Format: Label|/absolute/path (e.g. Backups|/srv/backups)." \
+        "$(_l "Monitored directories" "Отслеживаемые каталоги")" \
+        "$(_l \
+"Show 'du -sh' for each path (cached for 5 min). Format: Label|/absolute/path (e.g. Backups|/srv/backups)." \
+"Показывает 'du -sh' для каждого пути (кешируется на 5 мин). Формат: Label|/absolute/path (например Backups|/srv/backups).")" \
         "${DIRECTORIES_LIST[@]}")
     [[ ${#DIRECTORIES_LIST[@]} -eq 0 ]] && DIRECTORIES_ENABLED=false
 fi
 
-# --- 14. Last login count ---
+# --- Last logins ---
 
 if [[ "$LASTLOGIN_ENABLED" == "true" ]]; then
     LASTLOGIN_COUNT=$(wizard_text \
-        "Recent logins to show" \
-        "How many of the most recent successful logins to display." \
+        "$(_l "Recent logins to show" "Сколько недавних логинов показывать")" \
+        "$(_l \
+"How many of the most recent successful logins to display." \
+"Сколько последних успешных логинов отображать.")" \
         "$LASTLOGIN_COUNT")
 fi
 
-# --- 15. Weather ---
+# --- Weather ---
 
 if [[ "$WEATHER_ENABLED" == "true" ]]; then
     WEATHER_CITY=$(wizard_text \
-        "City for weather" \
-        "Used by wttr.in. Leave blank to auto-detect by IP. Examples: 'Berlin', 'New York', 'Tokyo'." \
+        "$(_l "City for weather" "Город для погоды")" \
+        "$(_l \
+"Used by wttr.in. Leave blank to auto-detect by IP. Examples: 'Berlin', 'New York', 'Tokyo'." \
+"Используется wttr.in. Пусто = автоопределение по IP. Примеры: 'Berlin', 'Москва', 'Tokyo'.")" \
         "$WEATHER_CITY")
 fi
 
@@ -495,23 +555,28 @@ chmod 0644 "$SMART_MOTD_CONFIG"
 # ---------- prime cache ----------
 
 _wiz_clear
-printf '\n  \e[1;32m✓ Configuration saved\e[0m to %s\n\n' "$SMART_MOTD_CONFIG"
-printf '  Priming cache (this may take a few seconds)…\n'
+printf '\n  \e[1;32m✓ %s\e[0m %s\n\n' \
+    "$(_l "Configuration saved" "Конфиг сохранён")" "$SMART_MOTD_CONFIG"
+printf '  %s\n' "$(_l "Priming cache (this may take a few seconds)…" "Прогреваю кеш (займёт пару секунд)…")"
 "${SMART_MOTD_PREFIX}/bin/motd-cache-update" || true
-printf '  \e[1;32m✓ Cache primed\e[0m\n\n'
+printf '  \e[1;32m✓ %s\e[0m\n\n' "$(_l "Cache primed" "Кеш прогрет")"
 
 # ---------- preview ----------
 
-if wizard_yesno "Show preview now?" \
-    "Render the MOTD with your new settings to verify everything looks right." y; then
+if wizard_yesno \
+    "$(_l "Show preview now?" "Показать превью прямо сейчас?")" \
+    "$(_l "Render the MOTD with your new settings to verify everything looks right." "Отрисовать MOTD с новыми настройками для проверки.")" y; then
     _wiz_clear
     printf '\n'
     SMART_MOTD_FORCE_COLOR=1 "${SMART_MOTD_PREFIX}/bin/motd-generate"
-    printf '\n  \e[2m(Press Enter to exit)\e[0m '
+    printf '\n  \e[2m(%s)\e[0m ' "$(_l "Press Enter to exit" "Нажмите Enter чтобы выйти")"
     read -r _ </dev/tty
 fi
 
-wizard_done "All done" "smart-motd will now render this on every login.
+wizard_done \
+    "$(_l "All done" "Готово")" \
+    "$(_l \
+"smart-motd will now render this on every login.
 
 Useful commands:
   smart-motd show         · preview the MOTD any time
@@ -519,4 +584,13 @@ Useful commands:
   sudo smart-motd edit    · edit the raw config
   sudo smart-motd uninstall
 
-Config: $SMART_MOTD_CONFIG"
+Config: $SMART_MOTD_CONFIG" \
+"smart-motd теперь будет показывать это при каждом логине.
+
+Полезные команды:
+  smart-motd show         · просмотреть MOTD в любой момент
+  sudo smart-motd setup   · перезапустить визард
+  sudo smart-motd edit    · отредактировать конфиг напрямую
+  sudo smart-motd uninstall
+
+Конфиг: $SMART_MOTD_CONFIG")"

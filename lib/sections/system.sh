@@ -69,7 +69,7 @@ section_system() {
         disk_color=$(pct_color "$disk_pct")
         label="Disk $mp"
         # truncate long mountpoint labels
-        (( ${#label} > 9 )) && label="${label:0:9}"
+        (( ${#label} > 10 )) && label="${label:0:10}"
         kv "$label" "$disk_text" "$disk_color"
     done
 

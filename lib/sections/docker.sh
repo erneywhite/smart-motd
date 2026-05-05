@@ -1,37 +1,21 @@
 #!/usr/bin/env bash
-# Docker: list running / total containers, one short status line each.
-
-_can_query_docker() {
-    have docker || return 1
-    docker info >/dev/null 2>&1
-}
+# Docker: read cached container list (populated by motd-cache-update).
 
 section_docker() {
-    if [[ "${DOCKER_ENABLED:-auto}" == "false" ]]; then
-        return
-    fi
-    _can_query_docker || return
+    [[ "${DOCKER_ENABLED:-auto}" == "false" ]] && return
 
-    local total running
-    total=$(docker ps -a --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' ')
-    running=$(docker ps --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' ')
+    local TOTAL=0 RUNNING=0 CONTAINERS=""
+    cache_kv_load docker || return
+    [[ "$TOTAL" -eq 0 ]] && [[ -z "$CONTAINERS" ]] && return
 
     section_heading "Docker containers"
+
     local color
-    if [[ "$running" == "$total" ]] && [[ "$total" -gt 0 ]]; then color="${C_GREEN}"
-    elif [[ "$running" == "0" ]]; then color="${C_GREY}"
+    if [[ "$RUNNING" == "$TOTAL" ]] && [[ "$TOTAL" -gt 0 ]]; then color="${C_GREEN}"
+    elif [[ "$RUNNING" == "0" ]]; then color="${C_GREY}"
     else color="${C_YELLOW}"
     fi
-    kv "Containers" "${running} running / ${total} total" "$color"
-
-    local filter="${DOCKER_FILTER:-}"
-    local fmt='{{.Names}}|{{.Status}}'
-    local rows
-    if [[ -n "$filter" ]]; then
-        rows=$(docker ps --format "$fmt" 2>/dev/null | grep -E "$filter" || true)
-    else
-        rows=$(docker ps --format "$fmt" 2>/dev/null)
-    fi
+    kv "Containers" "${RUNNING} running / ${TOTAL} total" "$color"
 
     local row name status short
     while IFS= read -r row; do
@@ -47,6 +31,6 @@ section_docker() {
         short="$name"
         (( ${#short} > 28 )) && short="${short:0:27}…"
         printf "   %s%-28s%s %s%s%s\n" "${C_BOLD}" "$short" "${C_RESET}" "$color" "$status" "${C_RESET}"
-    done <<<"$rows"
+    done <<<"$CONTAINERS"
     section_rule
 }

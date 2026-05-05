@@ -107,6 +107,48 @@ apply_theme() {
             THEME_KV_SEPARATOR=':'
             THEME_HEADING_STYLE='left'
             ;;
+        arrows)
+            THEME_BANNER_CHAR='▶'
+            THEME_DIVIDER_CHAR='▸'
+            THEME_KV_SEPARATOR='→'
+            THEME_HEADING_STYLE='arrows'
+            ;;
+        stars)
+            THEME_BANNER_CHAR='★'
+            THEME_DIVIDER_CHAR='·'
+            THEME_KV_SEPARATOR='·'
+            THEME_HEADING_STYLE='stars'
+            ;;
+        wave)
+            THEME_BANNER_CHAR='~'
+            THEME_DIVIDER_CHAR='~'
+            THEME_KV_SEPARATOR='~'
+            THEME_HEADING_STYLE='wave'
+            ;;
+        block)
+            THEME_BANNER_CHAR='█'
+            THEME_DIVIDER_CHAR='▄'
+            THEME_KV_SEPARATOR='│'
+            THEME_HEADING_STYLE='bracketed'
+            ;;
+        pipes)
+            THEME_BANNER_CHAR='═'
+            THEME_DIVIDER_CHAR='─'
+            THEME_KV_SEPARATOR='│'
+            THEME_HEADING_STYLE='bracketed'
+            ;;
+        retro)
+            THEME_BANNER_CHAR='='
+            THEME_DIVIDER_CHAR='='
+            THEME_KV_SEPARATOR='='
+            THEME_HEADING_STYLE='left'
+            ;;
+        compact)
+            THEME_BANNER_CHAR='─'
+            THEME_DIVIDER_CHAR=' '
+            THEME_KV_SEPARATOR=':'
+            THEME_HEADING_STYLE='left'
+            ;;
         custom)
             : "${THEME_BANNER_CHAR:==}"
             : "${THEME_DIVIDER_CHAR:=-}"
@@ -167,6 +209,45 @@ section_heading() {
                 "${C_BOLD}${accent}" "$title" "${C_RESET}${C_GREY}" \
                 "$tail" "${C_RESET}"
             ;;
+        arrows)
+            # ▸▸▸ Title ▸▸▸▸▸▸…
+            local prefix tail
+            prefix=$(_repeat_char "$ch" 3)
+            local rest=$(( total - ${#title} - 8 ))
+            (( rest < 1 )) && rest=1
+            tail=$(_repeat_char "$ch" "$rest")
+            printf "%s%s %s%s%s %s%s\n" \
+                "${C_GREY}" "$prefix" \
+                "${C_BOLD}${accent}" "$title" "${C_RESET}${C_GREY}" \
+                "$tail" "${C_RESET}"
+            ;;
+        stars)
+            # ★ ★ ★  Title  ★ ★ ★
+            local pad=$(( (total - ${#title} - 14) / 2 ))
+            (( pad < 1 )) && pad=1
+            local stars
+            stars=""
+            local i
+            for ((i = 0; i < pad / 2; i++)); do
+                stars+="★ "
+            done
+            printf "%s%s%s%s  %s  %s%s\n" \
+                "${C_YELLOW}" "$stars" "${C_RESET}" \
+                "${C_BOLD}${accent}" "$title" \
+                "${C_YELLOW}" "$stars${C_RESET}"
+            ;;
+        wave)
+            # ～～～ Title ～～～
+            local prefix tail
+            local pad=$(( (total - ${#title} - 4) / 2 ))
+            (( pad < 1 )) && pad=1
+            prefix=$(_repeat_char '～' "$pad")
+            tail=$(_repeat_char '～' "$pad")
+            printf "%s%s %s%s%s %s%s\n" \
+                "${C_CYAN}" "$prefix" \
+                "${C_BOLD}${accent}" "$title" "${C_RESET}${C_CYAN}" \
+                "$tail" "${C_RESET}"
+            ;;
         bracketed)
             # ━━━━━[ Title ]━━━━━
             local title_padded="[ ${title} ]"
@@ -209,11 +290,11 @@ section_thick_rule() {
     printf "%s%s%s\n" "${C_GREY}" "$(_repeat_char "$ch" "$total")" "${C_RESET}"
 }
 
-# Print a labeled line: "  Label   : value"
+# Print a labeled line: "  Label    : value"
 kv() {
     local label="$1" value="$2" color="${3:-}"
     local sep="${THEME_KV_SEPARATOR:-:}"
-    printf " %-9s%s %s%s%s\n" "$label" "$sep" "$color" "$value" "${C_RESET:-}"
+    printf " %-10s %s %s%s%s\n" "$label" "$sep" "$color" "$value" "${C_RESET:-}"
 }
 
 # Internal: repeat a single character N times. Handles multi-byte UTF-8 chars
@@ -285,4 +366,14 @@ cache_age() {
     now=$(date +%s)
     mtime=$(stat -c %Y "$path" 2>/dev/null || stat -f %m "$path" 2>/dev/null || echo "$now")
     echo $(( now - mtime ))
+}
+
+# Source a KV-style cache file (e.g. /var/cache/smart-motd/security.kv).
+# Returns 1 if the file is missing or empty.
+cache_kv_load() {
+    local name="$1"
+    local path="${SMART_MOTD_CACHE_DIR}/${name}.kv"
+    [[ -s "$path" ]] || return 1
+    # shellcheck disable=SC1090
+    . "$path"
 }

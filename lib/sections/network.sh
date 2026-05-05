@@ -41,7 +41,7 @@ section_network() {
         fi
         # truncate label
         local label="$iface"
-        (( ${#label} > 9 )) && label="${label:0:9}"
+        (( ${#label} > 10 )) && label="${label:0:10}"
         kv "$label" "$ip"
         shown=1
     done < <(_iface_ips)

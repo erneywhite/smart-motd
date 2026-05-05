@@ -6,4 +6,5 @@ Documentation=https://github.com/erneywhite/smart-motd
 Type=oneshot
 Nice=10
 IOSchedulingClass=idle
+Environment=SMART_MOTD_FORCE_COLOR=1
 ExecStart=/bin/sh -c '/usr/local/lib/smart-motd/bin/motd-generate >/etc/motd'

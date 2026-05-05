@@ -1,61 +1,29 @@
 #!/usr/bin/env bash
-# Security: fail2ban summary + recent failed SSH attempts.
-
-_failed_ssh_24h() {
-    # Best-effort: try journalctl, then /var/log/auth.log, then /var/log/secure.
-    if have journalctl; then
-        journalctl _COMM=sshd --since "24 hours ago" --no-pager 2>/dev/null \
-            | grep -cEi 'failed password|invalid user' || true
-        return
-    fi
-    local f
-    for f in /var/log/auth.log /var/log/secure; do
-        [[ -r "$f" ]] || continue
-        # Filter by today + yesterday isn't trivial cross-distro; approximate with full file.
-        grep -cEi 'failed password|invalid user' "$f" 2>/dev/null || true
-        return
-    done
-    echo 0
-}
-
-_fail2ban_summary() {
-    have fail2ban-client || return 1
-    fail2ban-client status 2>/dev/null | awk -F': *' '/Jail list/ {print $2}' | tr ',' '\n' | sed 's/^ *//;s/ *$//'
-}
+# Security: failed SSH attempts (24h) + fail2ban summary. Reads from cache.
 
 section_security() {
-    local failed banned_total=0 jails
-    failed=$(_failed_ssh_24h | tr -d ' \n')
-    failed="${failed:-0}"
+    local FAILED_SSH=0 FAIL2BAN_JAILS="" FAIL2BAN_BANNED=0
+    cache_kv_load security || true
 
-    if jails=$(_fail2ban_summary); then
-        local jail count
-        while IFS= read -r jail; do
-            [[ -z "$jail" ]] && continue
-            count=$(fail2ban-client status "$jail" 2>/dev/null | awk -F': *' '/Currently banned/ {print $2}' | tr -d ' \t')
-            count="${count:-0}"
-            banned_total=$(( banned_total + count ))
-        done <<<"$jails"
-    fi
-
-    # Skip the section entirely if nothing to show
-    if [[ "$failed" == "0" ]] && [[ -z "$jails" ]]; then
+    # Skip the section entirely if nothing to report.
+    if [[ "$FAILED_SSH" == "0" ]] && [[ -z "$FAIL2BAN_JAILS" ]]; then
         return
     fi
 
     section_heading "Security"
+
     local color
-    if [[ "$failed" -gt 50 ]]; then color="${C_RED}"
-    elif [[ "$failed" -gt 10 ]]; then color="${C_YELLOW}"
+    if [[ "$FAILED_SSH" -gt 50 ]]; then color="${C_RED}"
+    elif [[ "$FAILED_SSH" -gt 10 ]]; then color="${C_YELLOW}"
     else color="${C_GREEN}"
     fi
-    kv "SSH fails" "${failed} in last 24h" "$color"
+    kv "SSH fails" "${FAILED_SSH} in last 24h" "$color"
 
-    if [[ -n "$jails" ]]; then
-        if [[ "$banned_total" -gt 0 ]]; then color="${C_YELLOW}"; else color="${C_GREEN}"; fi
+    if [[ -n "$FAIL2BAN_JAILS" ]]; then
         local jail_count
-        jail_count=$(printf '%s\n' "$jails" | grep -c .)
-        kv "fail2ban" "${banned_total} banned across ${jail_count} jail(s)" "$color"
+        jail_count=$(printf '%s\n' $FAIL2BAN_JAILS | grep -c .)
+        if [[ "$FAIL2BAN_BANNED" -gt 0 ]]; then color="${C_YELLOW}"; else color="${C_GREEN}"; fi
+        kv "fail2ban" "${FAIL2BAN_BANNED} banned across ${jail_count} jail(s)" "$color"
     fi
     section_rule
 }

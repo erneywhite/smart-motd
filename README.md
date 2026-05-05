@@ -60,6 +60,15 @@ W e l c o m e   t o   y o u r   s e r v e r
 
 (Colors are real — green for healthy, yellow for warnings, red for problems.)
 
+## Features at a glance
+
+- **13 visual themes** — `classic`, `slim`, `heavy`, `double`, `dotted`, `ascii`, `arrows`, `stars`, `wave`, `block`, `pipes`, `retro`, `compact`
+- **6 color palettes** — `default`, `ocean`, `forest`, `sunset`, `amber`, `mono`
+- **Paged interactive setup** with arrow-key navigation and live preview of each theme/style choice
+- **Bilingual setup wizard** — English and Russian (the rendered MOTD itself stays system-language)
+- **Smart caching** of every slow data source (apt/dnf updates, public IP, SSL expiry, `du` on big dirs, SMART, journalctl SSH-fail counts, docker/podman/kubernetes lists, weather) — login stays under ~50ms even on busy hosts
+- **Cross-distro install** — auto-detects the family and wires into `/etc/update-motd.d/` (Debian/Ubuntu) or a systemd timer rendering `/etc/motd` (RHEL/openSUSE/Arch/Alpine)
+
 ## Install
 
 ```bash

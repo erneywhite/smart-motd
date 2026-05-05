@@ -1,31 +1,20 @@
 #!/usr/bin/env bash
-# Kubernetes: brief node + namespace summary if kubectl reaches a cluster.
+# Kubernetes: read cached cluster summary.
 
 section_kubernetes() {
     [[ "${KUBERNETES_ENABLED:-auto}" == "false" ]] && return
-    have kubectl || return
 
-    # Quick reachability check; bail silently if no cluster.
-    local ctx
-    ctx=$(kubectl config current-context 2>/dev/null) || return
-    [[ -z "$ctx" ]] && return
-
-    local nodes_ready nodes_total ns_count
-    if ! kubectl get --raw=/healthz >/dev/null 2>&1; then
-        return
-    fi
-
-    nodes_total=$(kubectl get nodes --no-headers 2>/dev/null | wc -l | tr -d ' ')
-    nodes_ready=$(kubectl get nodes --no-headers 2>/dev/null | awk '$2 == "Ready" {c++} END {print c+0}')
-    ns_count=$(kubectl get ns --no-headers 2>/dev/null | wc -l | tr -d ' ')
+    local CONTEXT="" NODES_READY=0 NODES_TOTAL=0 NS_COUNT=0
+    cache_kv_load kubernetes || return
+    [[ -z "$CONTEXT" ]] && return
 
     section_heading "Kubernetes"
-    kv "Context" "$ctx"
+    kv "Context" "$CONTEXT"
     local color
-    if [[ "$nodes_ready" == "$nodes_total" ]] && [[ "$nodes_total" -gt 0 ]]; then color="${C_GREEN}"
+    if [[ "$NODES_READY" == "$NODES_TOTAL" ]] && [[ "$NODES_TOTAL" -gt 0 ]]; then color="${C_GREEN}"
     else color="${C_YELLOW}"
     fi
-    kv "Nodes" "${nodes_ready} ready / ${nodes_total} total" "$color"
-    kv "Namespaces" "$ns_count"
+    kv "Nodes" "${NODES_READY} ready / ${NODES_TOTAL} total" "$color"
+    kv "Namespaces" "$NS_COUNT"
     section_rule
 }

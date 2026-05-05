@@ -1,29 +1,21 @@
 #!/usr/bin/env bash
-# Podman: same shape as docker section.
+# Podman: read cached container list.
 
 section_podman() {
-    if [[ "${PODMAN_ENABLED:-auto}" == "false" ]]; then return; fi
-    have podman || return
-    # Avoid duplicating output when podman emulates docker on the same host.
-    if [[ "${DOCKER_ENABLED:-auto}" != "false" ]] && _can_query_docker 2>/dev/null; then
-        local same
-        same=$(readlink -f "$(command -v docker)" 2>/dev/null || true)
-        [[ "$same" == *podman* ]] && return
-    fi
+    [[ "${PODMAN_ENABLED:-auto}" == "false" ]] && return
 
-    local total running
-    total=$(podman ps -a --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' ')
-    running=$(podman ps --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' ')
-
-    [[ "$total" -eq 0 ]] && return
+    local TOTAL=0 RUNNING=0 CONTAINERS=""
+    cache_kv_load podman || return
+    [[ "$TOTAL" -eq 0 ]] && [[ -z "$CONTAINERS" ]] && return
 
     section_heading "Podman containers"
+
     local color
-    if [[ "$running" == "$total" ]]; then color="${C_GREEN}"
-    elif [[ "$running" == "0" ]]; then color="${C_GREY}"
+    if [[ "$RUNNING" == "$TOTAL" ]] && [[ "$TOTAL" -gt 0 ]]; then color="${C_GREEN}"
+    elif [[ "$RUNNING" == "0" ]]; then color="${C_GREY}"
     else color="${C_YELLOW}"
     fi
-    kv "Containers" "${running} running / ${total} total" "$color"
+    kv "Containers" "${RUNNING} running / ${TOTAL} total" "$color"
 
     local row name status short
     while IFS= read -r row; do
@@ -31,12 +23,12 @@ section_podman() {
         name="${row%%|*}"
         status="${row#*|}"
         case "$status" in
-            Up*)  color="${C_GREEN}" ;;
-            *)    color="${C_YELLOW}" ;;
+            Up*) color="${C_GREEN}" ;;
+            *)   color="${C_YELLOW}" ;;
         esac
         short="$name"
         (( ${#short} > 28 )) && short="${short:0:27}…"
         printf "   %s%-28s%s %s%s%s\n" "${C_BOLD}" "$short" "${C_RESET}" "$color" "$status" "${C_RESET}"
-    done < <(podman ps --format '{{.Names}}|{{.Status}}' 2>/dev/null)
+    done <<<"$CONTAINERS"
     section_rule
 }

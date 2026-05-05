@@ -232,6 +232,124 @@ cache_update_smart() {
     cache_write "smart" "$lines"
 }
 
+# ---- security: failed SSH attempts (24h) + fail2ban ----
+# journalctl --since 24h with thousands of matches can take 1-2s on busy hosts;
+# fail2ban-client status is dbus-ish and similarly slow.
+cache_update_security() {
+    local failed=0 jails="" banned_total=0
+
+    if have journalctl; then
+        failed=$(journalctl _COMM=sshd --since "24 hours ago" --no-pager 2>/dev/null \
+            | grep -cEi 'failed password|invalid user' || true)
+    else
+        local f
+        for f in /var/log/auth.log /var/log/secure; do
+            [[ -r "$f" ]] || continue
+            failed=$(grep -cEi 'failed password|invalid user' "$f" 2>/dev/null || echo 0)
+            break
+        done
+    fi
+    failed="${failed:-0}"
+
+    if have fail2ban-client; then
+        jails=$(fail2ban-client status 2>/dev/null | awk -F': *' '/Jail list/ {print $2}' \
+            | tr ',' '\n' | sed 's/^ *//;s/ *$//' | tr '\n' ' ' | sed 's/ *$//')
+        local jail count
+        for jail in $jails; do
+            count=$(fail2ban-client status "$jail" 2>/dev/null | awk -F': *' '/Currently banned/ {print $2}' | tr -d ' \t')
+            count="${count:-0}"
+            banned_total=$(( banned_total + count ))
+        done
+    fi
+
+    {
+        printf 'FAILED_SSH=%s\n' "${failed:-0}"
+        printf 'FAIL2BAN_JAILS=%s\n' "$(qstr "$jails")"
+        printf 'FAIL2BAN_BANNED=%s\n' "${banned_total:-0}"
+    } | _cache_kv_write security
+}
+
+# ---- docker (and podman): containers list ----
+cache_update_docker() {
+    have docker || { _cache_kv_write docker <<<""; return; }
+    docker info >/dev/null 2>&1 || { _cache_kv_write docker <<<""; return; }
+
+    local total running rows filter="${DOCKER_FILTER:-}"
+    total=$(docker ps -a --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' ')
+    running=$(docker ps --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' ')
+    if [[ -n "$filter" ]]; then
+        rows=$(docker ps --format '{{.Names}}|{{.Status}}' 2>/dev/null | grep -E "$filter" || true)
+    else
+        rows=$(docker ps --format '{{.Names}}|{{.Status}}' 2>/dev/null)
+    fi
+
+    {
+        printf 'TOTAL=%s\n' "${total:-0}"
+        printf 'RUNNING=%s\n' "${running:-0}"
+        printf 'CONTAINERS=%s\n' "$(qstr "$rows")"
+    } | _cache_kv_write docker
+}
+
+cache_update_podman() {
+    have podman || { _cache_kv_write podman <<<""; return; }
+    # If docker is the same binary as podman, skip to avoid duplicate output.
+    if have docker; then
+        local same
+        same=$(readlink -f "$(command -v docker)" 2>/dev/null || true)
+        if [[ "$same" == *podman* ]]; then
+            _cache_kv_write podman <<<""
+            return
+        fi
+    fi
+
+    local total running rows
+    total=$(podman ps -a --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' ')
+    running=$(podman ps --format '{{.Names}}' 2>/dev/null | wc -l | tr -d ' ')
+    rows=$(podman ps --format '{{.Names}}|{{.Status}}' 2>/dev/null)
+
+    {
+        printf 'TOTAL=%s\n' "${total:-0}"
+        printf 'RUNNING=%s\n' "${running:-0}"
+        printf 'CONTAINERS=%s\n' "$(qstr "$rows")"
+    } | _cache_kv_write podman
+}
+
+# ---- kubernetes: cluster summary ----
+cache_update_kubernetes() {
+    have kubectl || { _cache_kv_write kubernetes <<<""; return; }
+    local ctx ready total ns
+    ctx=$(kubectl config current-context 2>/dev/null) || { _cache_kv_write kubernetes <<<""; return; }
+    [[ -z "$ctx" ]] && { _cache_kv_write kubernetes <<<""; return; }
+    if ! kubectl get --raw=/healthz >/dev/null 2>&1; then
+        _cache_kv_write kubernetes <<<""
+        return
+    fi
+    total=$(kubectl get nodes --no-headers 2>/dev/null | wc -l | tr -d ' ')
+    ready=$(kubectl get nodes --no-headers 2>/dev/null | awk '$2 == "Ready" {c++} END {print c+0}')
+    ns=$(kubectl get ns --no-headers 2>/dev/null | wc -l | tr -d ' ')
+
+    {
+        printf 'CONTEXT=%s\n' "$(qstr "$ctx")"
+        printf 'NODES_READY=%s\n' "${ready:-0}"
+        printf 'NODES_TOTAL=%s\n' "${total:-0}"
+        printf 'NS_COUNT=%s\n' "${ns:-0}"
+    } | _cache_kv_write kubernetes
+}
+
+# Internal: write KV-style cache file (sourceable by section).
+# Reads stdin → cache file. Atomic via temp+rename.
+_cache_kv_write() {
+    local name="$1"
+    local tmp="${SMART_MOTD_CACHE_DIR}/.${name}.kv.tmp"
+    cat >"$tmp"
+    mv -f "$tmp" "${SMART_MOTD_CACHE_DIR}/${name}.kv"
+}
+
+# Quote for safe inclusion in a sourceable bash file.
+qstr() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
+
+# cache_kv_load is defined in common.sh and re-used here.
+
 # ---- driver ----
 cache_update_all() {
     detect_distro
@@ -241,4 +359,8 @@ cache_update_all() {
     cache_update_weather
     cache_update_directories
     cache_update_smart
+    cache_update_security
+    cache_update_docker
+    cache_update_podman
+    cache_update_kubernetes
 }

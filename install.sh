@@ -121,7 +121,8 @@ case "$DISTRO_FAMILY" in
         echo "  Wiring MOTD via /etc/update-motd.d/01-smart-motd"
         cat >/etc/update-motd.d/01-smart-motd <<'EOF'
 #!/usr/bin/env bash
-exec /usr/local/lib/smart-motd/bin/motd-generate
+# pam_motd captures stdout, which makes [[ -t 1 ]] false; force-enable colors.
+SMART_MOTD_FORCE_COLOR=1 exec /usr/local/lib/smart-motd/bin/motd-generate
 EOF
         chmod +x /etc/update-motd.d/01-smart-motd
         if $DISABLE_DEFAULT_MOTD; then
@@ -147,14 +148,14 @@ EOF
             systemctl daemon-reload
             systemctl enable --now smart-motd-render.timer
             # Render once immediately.
-            "$PREFIX/bin/motd-generate" >/etc/motd 2>/dev/null || true
+            SMART_MOTD_FORCE_COLOR=1 "$PREFIX/bin/motd-generate" >/etc/motd 2>/dev/null || true
         else
             # Fallback: cron @5min
             if command -v crontab >/dev/null 2>&1; then
                 ( crontab -l 2>/dev/null | grep -v 'smart-motd' ; \
-                  echo "*/5 * * * * /usr/local/lib/smart-motd/bin/motd-generate >/etc/motd 2>/dev/null" ) | crontab -
+                  echo "*/5 * * * * SMART_MOTD_FORCE_COLOR=1 /usr/local/lib/smart-motd/bin/motd-generate >/etc/motd 2>/dev/null" ) | crontab -
             fi
-            "$PREFIX/bin/motd-generate" >/etc/motd 2>/dev/null || true
+            SMART_MOTD_FORCE_COLOR=1 "$PREFIX/bin/motd-generate" >/etc/motd 2>/dev/null || true
         fi
         ;;
 esac
