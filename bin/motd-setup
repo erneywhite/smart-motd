@@ -229,7 +229,7 @@ intro_body=$(_l \
 "Welcome! This wizard walks you through every section of your MOTD.
 
 For each question:
-  · ↑ / ↓ (or k / j) to navigate
+  · up/down arrows (or k / j) to navigate
   · Space to toggle a checkbox
   · Enter to confirm
   · y / n shortcuts for yes/no
@@ -244,7 +244,7 @@ https://github.com/erneywhite/smart-motd" \
 "Добро пожаловать! Визард проведёт через все секции вашего MOTD.
 
 Управление:
-  · ↑ / ↓ (или k / j) — навигация
+  · стрелки вверх/вниз (или k / j) — навигация
   · Space — переключить чекбокс
   · Enter — подтвердить
   · y / n — быстрый ответ для да/нет

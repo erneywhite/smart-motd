@@ -45,9 +45,20 @@ _disk_line() {
     df -hP "$mp" 2>/dev/null | awk 'NR==2 {gsub("%","",$5); printf "%s / %s (%s%% used)|%s", $3, $2, $5, $5}'
 }
 
+_os_pretty_name() {
+    if [[ -r /etc/os-release ]]; then
+        # Source in a subshell so we don't leak ID/PRETTY_NAME/etc into the
+        # caller's environment.
+        ( . /etc/os-release; printf '%s' "${PRETTY_NAME:-${NAME:-}${VERSION_ID:+ ${VERSION_ID}}}" )
+    fi
+}
+
 section_system() {
     section_heading "System status"
     kv "Hostname" "$(hostname -f 2>/dev/null || hostname)"
+    local os
+    os=$(_os_pretty_name)
+    [[ -n "$os" ]] && kv "OS" "$os"
     kv "Uptime"   "$(_human_uptime)"
     kv "Load"     "$(_load_line)"
 

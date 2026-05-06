@@ -7,7 +7,7 @@ Cross-distro (Debian / Ubuntu / RHEL / CentOS / Rocky / Alma / Fedora / Arch / o
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.1.1-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.2.0-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE%20%7C%20Alpine-blue)
 
 ## Preview
@@ -25,6 +25,7 @@ W e l c o m e   t o   y o u r   s e r v e r
 ================================================================
 -------------------- System status --------------------
  Hostname   : web-01.example.net
+ OS         : Ubuntu 22.04.3 LTS
  Uptime     : 4 days, 18 hours, 16 minutes
  Load       : 0.05, 0.07, 0.02
  Memory     : 1238 / 32088 MB
@@ -124,7 +125,7 @@ Each section is independent and can be turned on/off in the config (or via the w
 | **Header** | Custom banner text | Letter spacing, UPPER, lower, plain styles |
 | **Welcome** | Server title + custom KV lines (URLs, admin, …) | |
 | **Warning** | Legal / authorized-access notice | |
-| **System status** | Hostname, uptime, load, memory, disk(s), sessions | Mountpoints autodiscovered via `df` |
+| **System status** | Hostname, OS (Ubuntu 22.04 / Debian 12 / …), uptime, load, memory, disk(s), sessions | Mountpoints autodiscovered via `df`; OS pulled from `/etc/os-release` |
 | **Maintenance** | "Reboot required" notice | Detects Debian flag, RHEL `needs-restarting` |
 | **Package updates** | Pending updates, security count | apt / dnf / yum / zypper / pacman / apk |
 | **Services** | Configured systemd units + status | `active` / `failed` / `inactive`; multiselect autodiscover |
@@ -191,6 +192,20 @@ Color palettes set the heading accent. Status colors (green/yellow/red) stay int
 | `snow` | bright white | |
 
 You can also override individual `THEME_BANNER_CHAR` / `THEME_DIVIDER_CHAR` / `THEME_KV_SEPARATOR` / `THEME_HEADING_STYLE` in `/etc/smart-motd/config.conf` — those win over the named theme's defaults.
+
+### A note on fonts
+
+The wizard chrome itself (cursor, scroll indicators, checkboxes, navigation hints) only uses widely-supported ASCII characters — `>`, `^`, `v`, `[x]`, `[ ]` — so it works in any terminal regardless of font.
+
+The **theme presets** are a different matter. Themes like `stars` (`★`), `arrows` (`▶ ▸ →`), `chevrons` (`» «`), `sharp` (`◢ ◣ ◆`), `cosmic` (`◇`) need a Unicode-rich font on **your local terminal application** (iTerm2, Alacritty, Kitty, Windows Terminal, gnome-terminal, …). If you see `■` rectangles instead of the intended characters, your local terminal's font lacks those glyphs.
+
+The font lives on your **client**, not the server — installing fonts via `apk`/`apt` on the box you ssh INTO doesn't help, because what you're seeing is rendered by the program running on your laptop. Common ways to fix it:
+
+- macOS Terminal.app / iTerm2: install [JetBrainsMono Nerd Font](https://www.nerdfonts.com/) or any "Mono Nerd Font" variant.
+- Windows Terminal: same — install a Nerd Font and set it in your profile.
+- Linux gnome-terminal / kitty: install `fonts-firacode` / `ttf-jetbrains-mono-nerd` and pick it.
+
+Or just stick to the ASCII-friendly themes that work everywhere: `classic`, `slim`, `double`, `ascii`, `pipes`, `retro`, `compact`.
 
 ## How caching works
 

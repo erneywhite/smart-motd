@@ -331,12 +331,12 @@ wizard_yesno() {
         local i
         for i in 0 1; do
             if (( i == sel )); then
-                _p "  \e[1;36m❯ ${options[i]}\e[0m\n"
+                _p "  \e[1;36m> ${options[i]}\e[0m\n"
             else
                 _p "    ${options[i]}\n"
             fi
         done
-        _wiz_footer "↑/↓ or y/n · Enter to confirm"
+        _wiz_footer "up/down or y/n · Enter to confirm"
 
         _wiz_clear_tail
         IFS= read -rsn1 key </dev/tty || break
@@ -396,20 +396,20 @@ wizard_select() {
         _wiz_help "$help"
 
         if (( viewport_top > 0 )); then
-            _p "  \e[2m↑ $viewport_top more above\e[0m\n"
+            _p "  \e[2m^ $viewport_top more above\e[0m\n"
         fi
         for ((i = viewport_top; i < viewport_end; i++)); do
             label=$(_truncate "${options[i]}" "$max_label")
             if (( i == sel )); then
-                _p "  \e[1;36m❯ ${label}\e[0m\n"
+                _p "  \e[1;36m> ${label}\e[0m\n"
             else
                 _p "    ${label}\n"
             fi
         done
         if (( viewport_end < n )); then
-            _p "  \e[2m↓ $((n - viewport_end)) more below\e[0m\n"
+            _p "  \e[2mv $((n - viewport_end)) more below\e[0m\n"
         fi
-        _wiz_footer "↑/↓ navigate · 1-9 jump · Enter to confirm"
+        _wiz_footer "up/down navigate · 1-9 jump · Enter to confirm"
 
         _wiz_clear_tail
         IFS= read -rsn1 key </dev/tty || break
@@ -470,18 +470,18 @@ wizard_select_preview() {
         _wiz_help "$help"
 
         if (( viewport_top > 0 )); then
-            _p "  \e[2m↑ $viewport_top more above\e[0m\n"
+            _p "  \e[2m^ $viewport_top more above\e[0m\n"
         fi
         for ((i = viewport_top; i < viewport_end; i++)); do
             label=$(_truncate "${options[i]}" "$max_label")
             if (( i == sel )); then
-                _p "  \e[1;36m❯ ${label}\e[0m\n"
+                _p "  \e[1;36m> ${label}\e[0m\n"
             else
                 _p "    ${label}\n"
             fi
         done
         if (( viewport_end < n )); then
-            _p "  \e[2m↓ $((n - viewport_end)) more below\e[0m\n"
+            _p "  \e[2mv $((n - viewport_end)) more below\e[0m\n"
         fi
 
         _p "\n  \e[2m── Preview ──\e[0m\n"
@@ -490,7 +490,7 @@ wizard_select_preview() {
             _p "    ${pline}\n"
         done < <("$render_fn" "${options[$sel]}" 2>/dev/null)
 
-        _wiz_footer "↑/↓ navigate · Enter to confirm"
+        _wiz_footer "up/down navigate · Enter to confirm"
 
         _wiz_clear_tail
         IFS= read -rsn1 key </dev/tty || break
@@ -557,22 +557,22 @@ wizard_multiselect() {
         _wiz_help "$help"
 
         if (( viewport_top > 0 )); then
-            _p "  \e[2m↑ $viewport_top more above\e[0m\n"
+            _p "  \e[2m^ $viewport_top more above\e[0m\n"
         fi
         for ((i = viewport_top; i < viewport_end; i++)); do
             mark="\e[2m[ ]\e[0m"
-            [[ "${checked[i]}" == "1" ]] && mark="\e[1;32m[✓]\e[0m"
+            [[ "${checked[i]}" == "1" ]] && mark="\e[1;32m[x]\e[0m"
             label=$(_truncate "${options[i]}" "$max_label")
             if (( i == sel )); then
-                _p "  \e[1;36m❯\e[0m ${mark} \e[1m${label}\e[0m\n"
+                _p "  \e[1;36m>\e[0m ${mark} \e[1m${label}\e[0m\n"
             else
                 _p "    ${mark} ${label}\n"
             fi
         done
         if (( viewport_end < n )); then
-            _p "  \e[2m↓ $((n - viewport_end)) more below\e[0m\n"
+            _p "  \e[2mv $((n - viewport_end)) more below\e[0m\n"
         fi
-        _wiz_footer "↑/↓ move · Space toggle · a all · n none · Enter confirm"
+        _wiz_footer "up/down move · Space toggle · a all · n none · Enter confirm"
 
         _wiz_clear_tail
         IFS= read -rsn1 key </dev/tty || break

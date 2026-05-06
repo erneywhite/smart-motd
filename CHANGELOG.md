@@ -3,6 +3,29 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.0]
+
+### Added
+- System status section now shows the OS line right under
+  Hostname (e.g. `Ubuntu 22.04.3 LTS`, `Debian GNU/Linux 12
+  (bookworm)`, `openSUSE Tumbleweed`) — pulled from
+  `/etc/os-release` `PRETTY_NAME`. Skipped silently on hosts
+  without that file (i.e. nothing weird shown on macOS / BSD).
+
+### Changed
+- Wizard chrome (cursor pointer, scroll indicators, checkbox
+  marks, navigation hints) switched from fancy Unicode glyphs
+  (`❯` `↑` `↓` `✓`) to widely-supported ASCII (`>` `^` `v` `[x]`).
+  Stock fonts on some distros (e.g. openSUSE's TTY default) lack
+  the Misc-Symbols / Arrows blocks and rendered every fancy char
+  as a `■` placeholder. The wizard itself no longer depends on
+  font richness.
+- Theme presets (`stars`, `arrows`, `chevrons`, `cosmic`, `sharp`)
+  still use their fancy Unicode chars by design — they're an
+  explicit visual choice. README now has a new "A note on fonts"
+  section explaining the issue and pointing at Nerd Fonts as the
+  fix on the operator's local terminal.
+
 ## [1.1.1]
 
 ### Fixed
