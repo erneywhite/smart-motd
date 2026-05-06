@@ -15,14 +15,21 @@ fi
 
 echo "Uninstalling smart-motd…"
 
-# systemd units
-if command -v systemctl >/dev/null 2>&1; then
+# systemd units (only when systemd is actually running, not just installed —
+# Docker / chroots have systemctl on PATH but daemon-reload bombs there).
+if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
     for u in smart-motd-cache.timer smart-motd-cache.service \
              smart-motd-render.timer smart-motd-render.service; do
         systemctl disable --now "$u" 2>/dev/null || true
         rm -f "/etc/systemd/system/$u"
     done
-    systemctl daemon-reload
+    systemctl daemon-reload 2>/dev/null || true
+else
+    # Just clean up the unit files; nothing to disable.
+    rm -f /etc/systemd/system/smart-motd-cache.timer \
+          /etc/systemd/system/smart-motd-cache.service \
+          /etc/systemd/system/smart-motd-render.timer \
+          /etc/systemd/system/smart-motd-render.service
 fi
 
 # update-motd.d hook

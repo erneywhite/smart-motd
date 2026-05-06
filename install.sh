@@ -283,38 +283,54 @@ EOF
         fi
         ;;
     *)
-        step "Wiring login banner via systemd timer (renders /etc/motd every 5 min)"
-        if command -v systemctl >/dev/null 2>&1 && [[ -d /etc/systemd/system ]]; then
+        # Detect whether systemd is actually RUNNING (not just installed).
+        # Docker containers and chroots often have the systemctl binary +
+        # /etc/systemd/system, but no systemd as PID 1 — `daemon-reload`
+        # then bombs with "Failed to connect to system scope bus". The
+        # /run/systemd/system directory is the canonical "systemd is up"
+        # marker (created by systemd at boot; absent without it).
+        if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
+            step "Wiring login banner via systemd timer (renders /etc/motd every 5 min)"
             _inst 0644 "$WORK"/systemd/smart-motd-render.service /etc/systemd/system/smart-motd-render.service
             _inst 0644 "$WORK"/systemd/smart-motd-render.timer   /etc/systemd/system/smart-motd-render.timer
-            systemctl daemon-reload
-            systemctl enable --now smart-motd-render.timer >/dev/null 2>&1
+            systemctl daemon-reload 2>/dev/null \
+              && systemctl enable --now smart-motd-render.timer >/dev/null 2>&1 \
+              && ok "systemd render timer enabled" \
+              || warn "Couldn't enable smart-motd-render.timer — try 'systemctl enable --now smart-motd-render.timer' manually"
             SMART_MOTD_FORCE_COLOR=1 "$PREFIX/bin/motd-generate" >/etc/motd 2>/dev/null || true
-            ok "systemd render timer enabled"
+        elif command -v crontab >/dev/null 2>&1; then
+            step "Wiring login banner via cron (renders /etc/motd every 5 min)"
+            ( crontab -l 2>/dev/null | grep -v 'smart-motd' ; \
+              echo "*/5 * * * * SMART_MOTD_FORCE_COLOR=1 /usr/local/lib/smart-motd/bin/motd-generate >/etc/motd 2>/dev/null" ) | crontab - \
+              && ok "cron render entry added" \
+              || warn "Couldn't write crontab entry — render /etc/motd yourself or set up a timer manually"
+            SMART_MOTD_FORCE_COLOR=1 "$PREFIX/bin/motd-generate" >/etc/motd 2>/dev/null || true
         else
-            if command -v crontab >/dev/null 2>&1; then
-                ( crontab -l 2>/dev/null | grep -v 'smart-motd' ; \
-                  echo "*/5 * * * * SMART_MOTD_FORCE_COLOR=1 /usr/local/lib/smart-motd/bin/motd-generate >/etc/motd 2>/dev/null" ) | crontab -
-            fi
+            warn "Neither systemd nor cron available — /etc/motd won't auto-refresh"
+            note "Run 'smart-motd update-cache && smart-motd show > /etc/motd' periodically yourself."
             SMART_MOTD_FORCE_COLOR=1 "$PREFIX/bin/motd-generate" >/etc/motd 2>/dev/null || true
-            ok "cron render entry added (no systemd detected)"
         fi
         ;;
 esac
 
-# ---------- systemd cache timer (refreshes heavy data every 5 min) ----------
-if command -v systemctl >/dev/null 2>&1 && [[ -d /etc/systemd/system ]]; then
+# ---------- cache refresh job (every 5 min) ----------
+if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
     step "Enabling cache refresh timer (every 5 min)"
     _inst 0644 "$WORK"/systemd/smart-motd-cache.service /etc/systemd/system/smart-motd-cache.service
     _inst 0644 "$WORK"/systemd/smart-motd-cache.timer   /etc/systemd/system/smart-motd-cache.timer
-    systemctl daemon-reload
-    systemctl enable --now smart-motd-cache.timer >/dev/null 2>&1
-    ok "smart-motd-cache.timer enabled"
+    systemctl daemon-reload 2>/dev/null \
+      && systemctl enable --now smart-motd-cache.timer >/dev/null 2>&1 \
+      && ok "smart-motd-cache.timer enabled" \
+      || warn "Couldn't enable smart-motd-cache.timer — try 'systemctl enable --now smart-motd-cache.timer' manually"
 elif command -v crontab >/dev/null 2>&1; then
     step "Adding cache refresh cron entry (every 5 min)"
     ( crontab -l 2>/dev/null | grep -v 'motd-cache-update' ; \
-      echo "*/5 * * * * /usr/local/lib/smart-motd/bin/motd-cache-update >/dev/null 2>&1" ) | crontab -
-    ok "cron entry added"
+      echo "*/5 * * * * /usr/local/lib/smart-motd/bin/motd-cache-update >/dev/null 2>&1" ) | crontab - \
+      && ok "cron entry added" \
+      || warn "Couldn't write crontab entry — run 'smart-motd update-cache' periodically yourself"
+else
+    warn "No scheduler (systemd / cron) detected — cache won't auto-refresh"
+    note "Run 'sudo smart-motd update-cache' periodically yourself."
 fi
 
 print_summary

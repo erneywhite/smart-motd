@@ -3,6 +3,27 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.3]
+
+### Fixed
+- Installer aborted in Docker / chroot environments where the
+  `systemctl` binary exists and `/etc/systemd/system/` is present
+  but systemd is NOT running as PID 1. The crash looked like:
+  ```
+  System has not been booted with systemd as init system (PID 1).
+  Failed to connect to system scope bus via local transport: Host is down
+  ```
+- Now the installer probes for `[[ -d /run/systemd/system ]]` —
+  the canonical "systemd is currently up" marker — instead of
+  the install-time-only `/etc/systemd/system/` directory. When
+  systemd isn't actually running it falls through to the cron
+  fallback (or, if cron isn't there either, prints a clear
+  "no scheduler — refresh /etc/motd manually" warning).
+- All `systemctl` invocations also now have non-fatal error
+  handling (`|| warn …`) so a single failure doesn't abort the
+  whole install. `motd-uninstall` and `motd-doctor` got the same
+  guard.
+
 ## [1.3.2]
 
 ### Fixed
