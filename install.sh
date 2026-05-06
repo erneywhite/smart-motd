@@ -83,6 +83,17 @@ _repeat() {
     printf '%s' "$out"
 }
 
+# Drop-in cp+chmod replacement for `_inst MODE SRC DST`. We can't rely
+# on `install` being GNU coreutils on every distro — some Arch / minimal
+# images ship a different `install` binary higher in PATH (helm, a Cobra-
+# based AUR helper, etc.) that takes "install [PACKAGE...]" instead. Doing
+# the file copy ourselves avoids any PATH ambiguity.
+_inst() {
+    local mode="$1" src="$2" dst="$3"
+    cp -f "$src" "$dst"
+    chmod "$mode" "$dst"
+}
+
 # Banner with auto-computed inner width based on the longest content line.
 # No matter how short or long each line is, the right "│" always lines up.
 print_banner() {
@@ -204,20 +215,20 @@ fi
 # ---------- install files ----------
 step "Installing runtime to ${PREFIX}"
 mkdir -p "$PREFIX/lib" "$PREFIX/bin" "$PREFIX/lib/sections" "$CONFIG_DIR" "$CACHE_DIR" "$BIN_DIR"
-install -m 0755 "$WORK"/bin/motd-generate     "$PREFIX/bin/motd-generate"
-install -m 0755 "$WORK"/bin/motd-cache-update "$PREFIX/bin/motd-cache-update"
-install -m 0755 "$WORK"/bin/motd-setup        "$PREFIX/bin/motd-setup"
-install -m 0755 "$WORK"/bin/motd-doctor       "$PREFIX/bin/motd-doctor"
-install -m 0755 "$WORK"/bin/motd-uninstall    "$PREFIX/bin/motd-uninstall"
-install -m 0755 "$WORK"/bin/smart-motd        "$BIN_DIR/smart-motd"
-install -m 0644 "$WORK"/lib/common.sh         "$PREFIX/lib/common.sh"
-install -m 0644 "$WORK"/lib/cache.sh          "$PREFIX/lib/cache.sh"
-install -m 0644 "$WORK"/lib/wizard.sh         "$PREFIX/lib/wizard.sh"
+_inst 0755 "$WORK"/bin/motd-generate     "$PREFIX/bin/motd-generate"
+_inst 0755 "$WORK"/bin/motd-cache-update "$PREFIX/bin/motd-cache-update"
+_inst 0755 "$WORK"/bin/motd-setup        "$PREFIX/bin/motd-setup"
+_inst 0755 "$WORK"/bin/motd-doctor       "$PREFIX/bin/motd-doctor"
+_inst 0755 "$WORK"/bin/motd-uninstall    "$PREFIX/bin/motd-uninstall"
+_inst 0755 "$WORK"/bin/smart-motd        "$BIN_DIR/smart-motd"
+_inst 0644 "$WORK"/lib/common.sh         "$PREFIX/lib/common.sh"
+_inst 0644 "$WORK"/lib/cache.sh          "$PREFIX/lib/cache.sh"
+_inst 0644 "$WORK"/lib/wizard.sh         "$PREFIX/lib/wizard.sh"
 for f in "$WORK"/lib/sections/*.sh; do
-    install -m 0644 "$f" "$PREFIX/lib/sections/$(basename "$f")"
+    _inst 0644 "$f" "$PREFIX/lib/sections/$(basename "$f")"
 done
-[[ -f "$WORK/VERSION" ]] && install -m 0644 "$WORK/VERSION" "$PREFIX/VERSION"
-[[ -f "$WORK/config.example.conf" ]] && install -m 0644 "$WORK/config.example.conf" "$PREFIX/config.example.conf"
+[[ -f "$WORK/VERSION" ]] && _inst 0644 "$WORK/VERSION" "$PREFIX/VERSION"
+[[ -f "$WORK/config.example.conf" ]] && _inst 0644 "$WORK/config.example.conf" "$PREFIX/config.example.conf"
 ok "Installed binaries, libs, and section modules"
 
 # ---------- example config if none ----------
@@ -274,8 +285,8 @@ EOF
     *)
         step "Wiring login banner via systemd timer (renders /etc/motd every 5 min)"
         if command -v systemctl >/dev/null 2>&1 && [[ -d /etc/systemd/system ]]; then
-            install -m 0644 "$WORK"/systemd/smart-motd-render.service /etc/systemd/system/smart-motd-render.service
-            install -m 0644 "$WORK"/systemd/smart-motd-render.timer   /etc/systemd/system/smart-motd-render.timer
+            _inst 0644 "$WORK"/systemd/smart-motd-render.service /etc/systemd/system/smart-motd-render.service
+            _inst 0644 "$WORK"/systemd/smart-motd-render.timer   /etc/systemd/system/smart-motd-render.timer
             systemctl daemon-reload
             systemctl enable --now smart-motd-render.timer >/dev/null 2>&1
             SMART_MOTD_FORCE_COLOR=1 "$PREFIX/bin/motd-generate" >/etc/motd 2>/dev/null || true
@@ -294,8 +305,8 @@ esac
 # ---------- systemd cache timer (refreshes heavy data every 5 min) ----------
 if command -v systemctl >/dev/null 2>&1 && [[ -d /etc/systemd/system ]]; then
     step "Enabling cache refresh timer (every 5 min)"
-    install -m 0644 "$WORK"/systemd/smart-motd-cache.service /etc/systemd/system/smart-motd-cache.service
-    install -m 0644 "$WORK"/systemd/smart-motd-cache.timer   /etc/systemd/system/smart-motd-cache.timer
+    _inst 0644 "$WORK"/systemd/smart-motd-cache.service /etc/systemd/system/smart-motd-cache.service
+    _inst 0644 "$WORK"/systemd/smart-motd-cache.timer   /etc/systemd/system/smart-motd-cache.timer
     systemctl daemon-reload
     systemctl enable --now smart-motd-cache.timer >/dev/null 2>&1
     ok "smart-motd-cache.timer enabled"

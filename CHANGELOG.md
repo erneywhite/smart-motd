@@ -3,6 +3,17 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.2]
+
+### Fixed
+- Installer crashed on Arch Docker images (and any other host where
+  `install` in `$PATH` resolves to something other than GNU coreutils
+  — some AUR helpers, certain Cobra-based Go tools, etc. ship a
+  binary called `install` that takes "install [PACKAGE...]" instead).
+  Replaced every `install -m MODE SRC DST` in install.sh with a tiny
+  `_inst` wrapper that does `cp -f` + `chmod` — no PATH lookup, works
+  on any POSIX system.
+
 ## [1.3.1]
 
 ### Changed
