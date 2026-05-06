@@ -84,16 +84,23 @@ section_network() {
             (( ${#label} > 10 )) && label="${label:0:10}"
 
             # Append rx/tx rate from cache when enabled and available.
+            # ↓ = incoming (download), ↑ = outgoing (upload). Both columns
+            # are right-padded to a fixed width so values line up across
+            # interfaces regardless of IP length or rate magnitude.
             local value="$ip"
             if [[ "$show_rates" == "true" ]]; then
                 local rate
                 rate=$(_iface_rate "$iface")
                 if [[ -n "$rate" ]]; then
-                    local rx_bps tx_bps rx_h tx_h
+                    local rx_bps tx_bps rx_h tx_h ip_pad rx_pad
                     IFS='|' read -r rx_bps tx_bps <<<"$rate"
                     rx_h=$(_human_rate "$rx_bps")
                     tx_h=$(_human_rate "$tx_bps")
-                    value="${ip}  ${C_DIM}rx${C_RESET} ${rx_h}  ${C_DIM}tx${C_RESET} ${tx_h}"
+                    # Max IPv4 = "255.255.255.255" (15 chars); pad to 16.
+                    ip_pad=$(printf '%-16s' "$ip")
+                    # Longest reasonable rate = "999.9 MB/s" (10); pad to 10.
+                    rx_pad=$(printf '%-10s' "$rx_h")
+                    value="${ip_pad}  ${C_DIM}↓${C_RESET} ${rx_pad}  ${C_DIM}↑${C_RESET} ${tx_h}"
                 fi
             fi
             kv "$label" "$value"

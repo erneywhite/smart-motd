@@ -7,7 +7,7 @@ Cross-distro (Debian / Ubuntu / RHEL / CentOS / Rocky / Alma / Fedora / Arch / o
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.3.0-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.3.1-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE%20%7C%20Alpine-blue)
 
 ## Preview
@@ -43,8 +43,8 @@ W e l c o m e   t o   y o u r   s e r v e r
 -------------------------------------------------------
 --------------------- Network -------------------------
  Public     : 203.0.113.42
- eth0       : 10.0.0.5  rx 12.3 KB/s  tx 4.5 KB/s
- wg0        : 10.8.0.1  rx 1.2 KB/s   tx 0.8 KB/s
+ eth0       : 10.0.0.5         ↓ 12.3 KB/s  ↑ 4.5 KB/s
+ wg0        : 10.8.0.1         ↓ 1.2 KB/s   ↑ 0.8 KB/s
 -------------------------------------------------------
 ---------------- SSL certificates ---------------------
    example.com              84d left

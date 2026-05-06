@@ -3,6 +3,18 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.1]
+
+### Changed
+- Network rate labels switched from `rx`/`tx` to ↓/↑ — more
+  intuitive at-a-glance ("down arrow = traffic INTO the host",
+  "up arrow = traffic OUT").
+- IP and rate columns now right-padded (IP to 16 chars, rate
+  to 10) so the rate values line up across interfaces regardless
+  of IP length or magnitude. Previously the columns drifted
+  whenever one interface had a long IP and another a short one,
+  or one rate was in B/s and another in MB/s.
+
 ## [1.3.0]
 
 ### Added
