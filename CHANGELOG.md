@@ -3,6 +3,24 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.0]
+
+### Added
+- Network section can now show the rx/tx byte rate next to each
+  interface's IP, averaged over the cache window (5 minutes by
+  default). Output looks like:
+  ```
+   eth0       : 10.0.0.5  rx 12.3 KB/s  tx 4.5 KB/s
+   wg0        : 10.8.0.1  rx 1.2 KB/s   tx 0.8 KB/s
+  ```
+  Rates are computed by snapshotting `/sys/class/net/<iface>/statistics/`
+  on each cache run and diffing against the previous snapshot, so
+  the on-login path stays free. New `NETWORK_SHOW_RATES` toggle
+  (default `true`); a setup-wizard question lets you opt out.
+  Auto-formats as B/s / KB/s / MB/s / GB/s. Counter resets clamp
+  to 0. First cache cycle after install shows IP only — rates
+  appear after the second tick (~5 minutes later).
+
 ## [1.2.0]
 
 ### Added

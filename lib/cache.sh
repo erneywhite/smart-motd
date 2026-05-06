@@ -377,6 +377,61 @@ qstr() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 
 # cache_kv_load is defined in common.sh and re-used here.
 
+# ---- network rx/tx rates ----
+# Read /sys/class/net/<iface>/statistics/{rx,tx}_bytes counters now,
+# diff against the snapshot from the previous cache run, and store
+# bytes/sec rates per interface. The window equals the time between
+# two cache updates — by default that's the 5-minute systemd timer,
+# i.e. a 5-minute moving average. On the first run no previous
+# snapshot exists yet, so the rates file stays empty for one tick.
+cache_update_network_rates() {
+    local snapshot="${SMART_MOTD_CACHE_DIR}/network_rates_snapshot"
+    local now current=""
+    now=$(date +%s)
+
+    local iface_dir iface rx tx
+    for iface_dir in /sys/class/net/*/; do
+        [[ -d "$iface_dir" ]] || continue
+        iface=$(basename "$iface_dir")
+        [[ "$iface" == "lo" ]] && continue
+        [[ -r "$iface_dir/statistics/rx_bytes" ]] || continue
+        rx=$(<"$iface_dir/statistics/rx_bytes")
+        tx=$(<"$iface_dir/statistics/tx_bytes")
+        current+="${iface}|${rx}|${tx}"$'\n'
+    done
+
+    local rates=""
+    if [[ -r "$snapshot" ]]; then
+        local prev_time elapsed prev_line prev_iface prev_rx prev_tx
+        prev_time=$(head -1 "$snapshot")
+        elapsed=$((now - prev_time))
+        if (( elapsed > 0 )); then
+            local line c_iface c_rx c_tx rx_rate tx_rate
+            while IFS='|' read -r c_iface c_rx c_tx; do
+                [[ -z "$c_iface" ]] && continue
+                # find matching iface in previous snapshot
+                prev_line=$(grep -m1 "^${c_iface}|" "$snapshot" 2>/dev/null) || prev_line=""
+                [[ -z "$prev_line" ]] && continue
+                IFS='|' read -r prev_iface prev_rx prev_tx <<<"$prev_line"
+                rx_rate=$(( (c_rx - prev_rx) / elapsed ))
+                tx_rate=$(( (c_tx - prev_tx) / elapsed ))
+                # clamp negatives (counter reset on interface bounce)
+                (( rx_rate < 0 )) && rx_rate=0
+                (( tx_rate < 0 )) && tx_rate=0
+                rates+="${c_iface}|${rx_rate}|${tx_rate}|${elapsed}"$'\n'
+            done <<<"$current"
+        fi
+    fi
+
+    # Save the new snapshot (timestamp on first line, then iface|rx|tx rows)
+    {
+        printf '%d\n' "$now"
+        printf '%s' "$current"
+    } > "$snapshot"
+
+    cache_write "network_rates" "$rates"
+}
+
 # ---- VPN tunnels (WireGuard + OpenVPN) ----
 # WireGuard requires root for `wg show`, which is why we cache (this job
 # runs as root via systemd; the on-login generator may not be).
@@ -451,4 +506,5 @@ cache_update_all() {
     cache_update_kubernetes
     cache_update_vpn
     cache_update_zpool
+    cache_update_network_rates
 }

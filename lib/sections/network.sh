@@ -15,6 +15,30 @@ _iface_ips() {
     fi
 }
 
+# Format bytes/sec as a short human-readable string (auto KB/MB/GB).
+_human_rate() {
+    awk -v b="$1" 'BEGIN {
+        if (b < 1024)               printf "%d B/s", b
+        else if (b < 1048576)       printf "%.1f KB/s", b/1024
+        else if (b < 1073741824)    printf "%.1f MB/s", b/1048576
+        else                        printf "%.1f GB/s", b/1073741824
+    }'
+}
+
+# Look up the rx/tx rate for an interface in the cached network_rates file.
+# Returns "rx_bps|tx_bps" or empty if not present.
+_iface_rate() {
+    local iface="$1"
+    local data line
+    data=$(cache_read "network_rates" "")
+    [[ -z "$data" ]] && return
+    line=$(grep -m1 "^${iface}|" <<<"$data" 2>/dev/null)
+    [[ -z "$line" ]] && return
+    local _i rx tx _e
+    IFS='|' read -r _i rx tx _e <<<"$line"
+    printf '%s|%s' "${rx:-0}" "${tx:-0}"
+}
+
 section_network() {
     local show_public="${NETWORK_SHOW_PUBLIC_IP:-true}"
     local show_iface="${NETWORK_SHOW_INTERFACES:-true}"
@@ -42,6 +66,7 @@ section_network() {
         if [[ ${#NETWORK_INTERFACES[@]} -gt 0 ]]; then
             iface_filter=("${NETWORK_INTERFACES[@]}")
         fi
+        local show_rates="${NETWORK_SHOW_RATES:-true}"
         local entry iface ip
         while IFS= read -r entry; do
             [[ -z "$entry" ]] && continue
@@ -57,7 +82,21 @@ section_network() {
             fi
             local label="$iface"
             (( ${#label} > 10 )) && label="${label:0:10}"
-            kv "$label" "$ip"
+
+            # Append rx/tx rate from cache when enabled and available.
+            local value="$ip"
+            if [[ "$show_rates" == "true" ]]; then
+                local rate
+                rate=$(_iface_rate "$iface")
+                if [[ -n "$rate" ]]; then
+                    local rx_bps tx_bps rx_h tx_h
+                    IFS='|' read -r rx_bps tx_bps <<<"$rate"
+                    rx_h=$(_human_rate "$rx_bps")
+                    tx_h=$(_human_rate "$tx_bps")
+                    value="${ip}  ${C_DIM}rx${C_RESET} ${rx_h}  ${C_DIM}tx${C_RESET} ${tx_h}"
+                fi
+            fi
+            kv "$label" "$value"
             shown=1
         done < <(_iface_ips)
     fi

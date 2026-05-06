@@ -756,6 +756,18 @@ configure_network_page() {
     if $picked_all; then
         NETWORK_INTERFACES=()  # empty = show all
     fi
+
+    # Optionally append rx/tx rate next to each IP.
+    if wizard_yesno \
+        "$(_l "Show rx/tx rate next to each interface?" "Показывать rx/tx-скорость рядом с каждым интерфейсом?")" \
+        "$(_l \
+"Adds a 5-minute averaged byte rate after each IP (e.g. 'eth0: 10.0.0.5  rx 12.3 KB/s  tx 4.5 KB/s'). The rate is computed from /sys/class/net counters at every cache refresh, so it appears one tick after fresh installs." \
+"Добавляет к каждому IP среднюю скорость за 5 минут (например 'eth0: 10.0.0.5  rx 12.3 KB/s  tx 4.5 KB/s'). Считается из /sys/class/net на каждом обновлении кеша, поэтому после свежей установки появляется через один цикл (~5 мин).")" \
+        "$([[ "${NETWORK_SHOW_RATES:-true}" == "true" ]] && echo y || echo n)"; then
+        NETWORK_SHOW_RATES=true
+    else
+        NETWORK_SHOW_RATES=false
+    fi
 }
 
 if [[ "$NETWORK_ENABLED" == "true" ]]; then
@@ -853,6 +865,7 @@ TS=$(date '+%Y-%m-%d %H:%M:%S')
     echo "# ---- Network ----"
     echo "NETWORK_SHOW_PUBLIC_IP=$NETWORK_SHOW_PUBLIC_IP"
     echo "NETWORK_SHOW_INTERFACES=${NETWORK_SHOW_INTERFACES:-true}"
+    echo "NETWORK_SHOW_RATES=${NETWORK_SHOW_RATES:-true}"
     write_array NETWORK_INTERFACES "${NETWORK_INTERFACES[@]}"
     echo
     echo "# ---- SSL ----"
