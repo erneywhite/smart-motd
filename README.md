@@ -205,6 +205,8 @@ The font lives on your **client**, not the server — installing fonts via `apk`
 - Windows Terminal: same — install a Nerd Font and set it in your profile.
 - Linux gnome-terminal / kitty: install `fonts-firacode` / `ttf-jetbrains-mono-nerd` and pick it.
 
+**Exception — VNC / RDP / xrdp**: when you connect to a remote desktop session and open a terminal inside it, the terminal program is running on the **server**, so the fonts that matter are *server-side* in that case. Install Nerd Fonts on the server (`apt install fonts-jetbrains-mono`, `zypper install nerd-fonts-jetbrains-mono-fonts`, etc.) and re-launch the session. Same applies to logging into the local TTY console directly (`tty1`–`tty6`) — fonts come from `console-setup` / `kbd`.
+
 Or just stick to the ASCII-friendly themes that work everywhere: `classic`, `slim`, `double`, `ascii`, `pipes`, `retro`, `compact`.
 
 ## How caching works
