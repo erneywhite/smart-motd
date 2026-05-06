@@ -235,7 +235,7 @@ On Debian/Ubuntu the same job also regenerates `/run/motd.dynamic` so `pam_motd`
 | Family | Auto-install hook | MOTD method | Tested |
 |---|---|---|---|
 | Debian / Ubuntu | `apt-get` | `/etc/update-motd.d/` + `/run/motd.dynamic` refresh | ✅ Ubuntu 22.04, Debian 12 |
-| RHEL / CentOS / Rocky / Alma / Fedora | `dnf` / `yum` | systemd timer → `/etc/motd` | ✅ Rocky 9 |
+| RHEL / CentOS / Rocky / Alma / Fedora | `dnf` / `yum` | systemd timer → `/etc/motd` | ✅ Rocky 9, CentOS 10 |
 | openSUSE | `zypper` | systemd timer → `/etc/motd` | ✅ openSUSE Leap 15.6 |
 | Arch / Manjaro | `pacman` | systemd timer → `/etc/motd` | best-effort |
 | Alpine | `apk` | cron → `/etc/motd` | best-effort |
