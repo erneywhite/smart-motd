@@ -72,6 +72,11 @@ if [[ -r "$SMART_MOTD_CONFIG" ]]; then
     . "$SMART_MOTD_CONFIG"
 fi
 
+# Force the upgrade-notice section on. It's a system-level concern (security
+# updates ship as smart-motd releases too), not something the operator should
+# be able to silence — so we override whatever config.conf says.
+UPGRADE_NOTICE_ENABLED=true
+
 # shellcheck source=../lib/common.sh
 . "${SMART_MOTD_PREFIX}/lib/common.sh"
 apply_theme

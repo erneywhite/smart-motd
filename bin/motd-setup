@@ -78,7 +78,6 @@ DIRECTORIES_ENABLED=false
 LASTLOGIN_ENABLED=true
 WEATHER_ENABLED=false
 TELEGRAM_ALERTS_ENABLED=false
-UPGRADE_NOTICE_ENABLED=true
 NTP_ENABLED=auto
 RAID_ENABLED=auto
 VPN_ENABLED=auto
@@ -381,7 +380,6 @@ mapfile -t selected_sections < <(wizard_multiselect \
     "$(_pre "$LASTLOGIN_ENABLED")$(_l "Recent logins" "Недавние логины")" \
     "$(_pre "$TELEGRAM_ALERTS_ENABLED")$(_l "Telegram SSH login alerts" "Telegram-уведомления о входе по SSH")" \
     "$(_pre "$WEATHER_ENABLED")$(_l "Weather (wttr.in)" "Погода (wttr.in)")" \
-    "$(_pre "$UPGRADE_NOTICE_ENABLED")$(_l "Upgrade notice (when a newer release is on GitHub)" "Уведомление об обновлении (когда на GitHub есть свежий релиз)")" \
 )
 
 # Reset toggles, then enable picked. We match on a substring so localized labels work.
@@ -392,7 +390,7 @@ SECURITY_ENABLED=false; TEMPERATURE_ENABLED=false; SMART_ENABLED=false
 DOCKER_ENABLED=false; PODMAN_ENABLED=false; KUBERNETES_ENABLED=false
 DIRECTORIES_ENABLED=false; LASTLOGIN_ENABLED=false; WEATHER_ENABLED=false
 NTP_ENABLED=false; RAID_ENABLED=false; VPN_ENABLED=false
-TELEGRAM_ALERTS_ENABLED=false; UPGRADE_NOTICE_ENABLED=false
+TELEGRAM_ALERTS_ENABLED=false
 
 for s in "${selected_sections[@]}"; do
     case "$s" in
@@ -418,7 +416,6 @@ for s in "${selected_sections[@]}"; do
         *"Recent logins"*|*"Недавние логины"*)          LASTLOGIN_ENABLED=true ;;
         *Weather*|*Погода*)                             WEATHER_ENABLED=true ;;
         *Telegram*)                                      TELEGRAM_ALERTS_ENABLED=true ;;
-        *"Upgrade notice"*|*"Уведомление об обновлении"*) UPGRADE_NOTICE_ENABLED=true ;;
     esac
 done
 
@@ -1141,7 +1138,7 @@ TS=$(date '+%Y-%m-%d %H:%M:%S')
     echo "# ---- Section toggles ----"
     for s in HEADER WELCOME WARNING SYSTEM MAINTENANCE UPDATES SERVICES NETWORK SSL \
              SECURITY TEMPERATURE SMART DOCKER PODMAN KUBERNETES VPN NTP RAID \
-             DIRECTORIES LASTLOGIN WEATHER TELEGRAM_ALERTS UPGRADE_NOTICE FOOTER; do
+             DIRECTORIES LASTLOGIN WEATHER TELEGRAM_ALERTS FOOTER; do
         var="${s}_ENABLED"
         echo "${var}=${!var}"
     done

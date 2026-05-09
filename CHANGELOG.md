@@ -3,6 +3,19 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.1]
+
+### Changed
+- The upgrade-notice section is now a **system parameter** — no
+  longer optional. Removed it from the wizard's first multiselect
+  (one less question to answer) and `motd-generate` now forces
+  `UPGRADE_NOTICE_ENABLED=true` after sourcing the config,
+  overriding whatever's saved on disk. Rationale: surface the
+  signal that a newer smart-motd is available — including
+  potential security fixes — without giving operators a way to
+  silently miss it. The notice still renders zero output when
+  the install is up-to-date.
+
 ## [1.6.0]
 
 ### Added — passive upgrade notice

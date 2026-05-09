@@ -7,7 +7,7 @@ Cross-distro (Debian / Ubuntu / RHEL / CentOS / Rocky / Alma / Fedora / Arch / o
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.6.0-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.6.1-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE%20%7C%20Alpine-blue)
 
 ## Preview
@@ -148,7 +148,7 @@ Each section is independent and can be turned on/off in the config (or via the w
 | **Recent logins** | Last N successful logins | |
 | **Weather** | One-line wttr.in summary | Off by default; auto-detects your city via IP |
 | **Telegram SSH alerts** | (not visible in MOTD) Sends a Telegram message on every SSH login | Off by default; PAM-hooked; bot token in root-only `/etc/smart-motd/secrets.conf`; EN/RU message language |
-| **Upgrade notice** | One-line "↑ smart-motd vX.Y.Z available" at the bottom when a newer release is published | On by default; checked via GitHub API in the cache job; nothing shown when up-to-date |
+| **Upgrade notice** | One-line "↑ smart-motd vX.Y.Z available" at the bottom when a newer release is published | Always on (system parameter, can't be disabled). Checked via GitHub API in the cache job; nothing shown when up-to-date |
 
 Sections marked `auto` only render if the relevant tool/file exists on the host. Nothing breaks if `docker`, `kubectl`, `smartctl`, etc. aren't installed — the wizard's first page also no longer pre-checks these on hosts where the underlying tool isn't present.
 
