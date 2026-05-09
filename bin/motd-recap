@@ -50,7 +50,9 @@ fi
 # motd-ssh-alert so the operator immediately knows which box this came
 # from. Local interface IP first because behind NAT the public IP is the
 # gateway address — useless for distinguishing servers.
-HOSTNAME_FULL="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"
+# Use plain `hostname` (kernel hostname) — `hostname -f` does a DNS lookup
+# that on cloud / NAT'd hosts often returns junk auto-generated names.
+HOSTNAME_FULL="$(hostname 2>/dev/null || hostname -f 2>/dev/null || echo unknown)"
 SERVER_IP=""
 if command -v ip >/dev/null 2>&1; then
     SERVER_IP=$(ip route get 1.1.1.1 2>/dev/null \

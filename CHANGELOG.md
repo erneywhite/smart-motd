@@ -3,6 +3,26 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.4]
+
+### Fixed
+- Hostname resolution preferred `hostname -f` over `hostname`,
+  but on cloud / NAT'd hosts `-f` does a DNS lookup that
+  returns generic auto-generated names (e.g.
+  `server-ayozdc.localdomain`) instead of what the operator
+  actually set via `hostnamectl set-hostname` / `/etc/hostname`.
+  Example from the wild:
+  ```
+  $ hostname        # what the operator set
+  erney.online
+  $ hostname -f     # what DHCP / cloud-init resolved
+  server-ayozdc.localdomain
+  ```
+  Switched to plain `hostname` everywhere (System status section,
+  Telegram alerts, daily recap) so the operator's actual chosen
+  hostname is what shows up. `hostname -f` is now only the
+  fallback when `hostname` itself fails (essentially never).
+
 ## [1.5.3]
 
 ### Changed

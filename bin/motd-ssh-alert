@@ -50,7 +50,12 @@ RHOST="${PAM_RHOST:-unknown}"
 # SAME for every server behind that NAT and useless for identification.
 # `ip route get` consults the kernel routing table without sending any
 # traffic, returning whatever source IP the box would use for outbound.
-HOSTNAME_FULL="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"
+# Prefer plain `hostname` (the kernel hostname — i.e. what the operator
+# actually set via `hostnamectl set-hostname` or /etc/hostname). `hostname -f`
+# does a DNS lookup that on cloud / NAT'd hosts often returns a generic
+# auto-generated name (e.g. "server-xxxx.localdomain") instead of the
+# operator's real choice. Only fall back to -f if `hostname` somehow fails.
+HOSTNAME_FULL="$(hostname 2>/dev/null || hostname -f 2>/dev/null || echo unknown)"
 SERVER_IP=""
 if command -v ip >/dev/null 2>&1; then
     SERVER_IP=$(ip route get 1.1.1.1 2>/dev/null \
