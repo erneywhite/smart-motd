@@ -39,7 +39,27 @@ command -v curl >/dev/null 2>&1 || exit 0
 
 USER_NAME="${PAM_USER:-unknown}"
 RHOST="${PAM_RHOST:-unknown}"
-HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
+
+# Server identity for the message: prefer full hostname (FQDN if configured),
+# annotated with the server's outward-facing IP in parentheses. Helps the
+# operator instantly tell which of N servers fired the alert.
+HOSTNAME_FULL="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"
+SERVER_IP=""
+if [[ -r "${SMART_MOTD_CACHE_DIR:-/var/cache/smart-motd}/public_ip" ]]; then
+    SERVER_IP=$(cat "${SMART_MOTD_CACHE_DIR:-/var/cache/smart-motd}/public_ip" 2>/dev/null)
+    [[ "$SERVER_IP" == "unavailable" ]] && SERVER_IP=""
+fi
+if [[ -z "$SERVER_IP" ]] && command -v ip >/dev/null 2>&1; then
+    # Fallback: source IP we'd use to reach the public internet. Doesn't
+    # generate any traffic — just consults the kernel's routing table.
+    SERVER_IP=$(ip route get 1.1.1.1 2>/dev/null \
+        | awk '{for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}')
+fi
+if [[ -n "$SERVER_IP" ]]; then
+    SERVER_DISPLAY="${HOSTNAME_FULL} (${SERVER_IP})"
+else
+    SERVER_DISPLAY="$HOSTNAME_FULL"
+fi
 
 # IP whitelist — silently skip the alert when the connecting IP matches an
 # entry in TELEGRAM_ALERTS_IP_WHITELIST. Each entry is either a single IPv4
@@ -95,7 +115,7 @@ if [[ "$TELEGRAM_ALERTS_LANG" == "ru" ]]; then
     [[ -n "$RDNS" ]] && MSG+="
 🌐 rDNS: ${RDNS}"
     MSG+="
-🖥 Сервер: ${HOSTNAME_SHORT}
+🖥 Сервер: ${SERVER_DISPLAY}
 🕐 ${TS}"
 else
     TS=$(date '+%Y-%m-%d %H:%M:%S %Z')
@@ -105,7 +125,7 @@ else
     [[ -n "$RDNS" ]] && MSG+="
 🌐 rDNS: ${RDNS}"
     MSG+="
-🖥 Server: ${HOSTNAME_SHORT}
+🖥 Server: ${SERVER_DISPLAY}
 🕐 ${TS}"
 fi
 

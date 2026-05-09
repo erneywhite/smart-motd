@@ -3,6 +3,23 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.2]
+
+### Changed
+- Telegram alerts (per-login + daily recap) now show the server's
+  full hostname plus its outward-facing IP in parentheses, instead
+  of just `hostname -s`. Useful when you have several servers and
+  want to identify the source of an alert at a glance:
+  ```
+  before:  🖥 Сервер: web
+  after:   🖥 Сервер: web.example.com (203.0.113.42)
+  ```
+  IP source priority: `/var/cache/smart-motd/public_ip` (whatever
+  the periodic cache job last fetched), then `ip route get
+  1.1.1.1` (kernel routing-table source IP for the public default
+  route — no actual traffic generated). If neither resolves, just
+  the hostname is shown.
+
 ## [1.5.1]
 
 ### Changed

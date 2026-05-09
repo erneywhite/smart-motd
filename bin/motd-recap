@@ -46,7 +46,23 @@ fi
 
 # ---------- gather data ----------
 
-HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
+# Server identity: full hostname + outward-facing IP, same shape as
+# motd-ssh-alert so the operator immediately knows which box this came from.
+HOSTNAME_FULL="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"
+SERVER_IP=""
+if [[ -r "$SMART_MOTD_CACHE_DIR/public_ip" ]]; then
+    SERVER_IP=$(cat "$SMART_MOTD_CACHE_DIR/public_ip" 2>/dev/null)
+    [[ "$SERVER_IP" == "unavailable" ]] && SERVER_IP=""
+fi
+if [[ -z "$SERVER_IP" ]] && command -v ip >/dev/null 2>&1; then
+    SERVER_IP=$(ip route get 1.1.1.1 2>/dev/null \
+        | awk '{for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}')
+fi
+if [[ -n "$SERVER_IP" ]]; then
+    SERVER_DISPLAY="${HOSTNAME_FULL} (${SERVER_IP})"
+else
+    SERVER_DISPLAY="$HOSTNAME_FULL"
+fi
 
 # SSH logins in the last 24h (best-effort, journalctl preferred)
 LOGINS_24H=0
@@ -95,7 +111,7 @@ fi
 # ---------- compose message ----------
 
 if [[ "$TELEGRAM_ALERTS_LANG" == "ru" ]]; then
-    MSG="📊 Ежедневная сводка · ${HOSTNAME_SHORT}
+    MSG="📊 Ежедневная сводка · ${SERVER_DISPLAY}
 🗓 ${TODAY}
 
 🔓 SSH-входов за 24ч: ${LOGINS_24H}
@@ -109,7 +125,7 @@ if [[ "$TELEGRAM_ALERTS_LANG" == "ru" ]]; then
 ⚠️ Требуется перезагрузка"
     fi
 else
-    MSG="📊 Daily recap · ${HOSTNAME_SHORT}
+    MSG="📊 Daily recap · ${SERVER_DISPLAY}
 🗓 ${TODAY}
 
 🔓 SSH logins in 24h: ${LOGINS_24H}
