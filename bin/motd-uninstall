@@ -54,6 +54,21 @@ if command -v crontab >/dev/null 2>&1; then
     crontab -l 2>/dev/null | grep -v 'smart-motd\|motd-cache-update' | crontab - 2>/dev/null || true
 fi
 
+# SSH login alert PAM hook — strip our injected lines from /etc/pam.d/sshd.
+# Matches both the "# smart-motd SSH login alert hook" comment and the
+# pam_exec line itself (and tolerates a leading blank line).
+if [[ -f /etc/pam.d/sshd ]]; then
+    sed -i.smart-motd-prev \
+        -e '/# smart-motd SSH login alert hook/d' \
+        -e '\|pam_exec.so.*motd-ssh-alert|d' \
+        /etc/pam.d/sshd 2>/dev/null || true
+    rm -f /etc/pam.d/sshd.smart-motd-prev
+fi
+
+# Secrets file (bot token / chat ID). We DO remove this on uninstall —
+# leaving credentials behind would be a footgun.
+rm -f /etc/smart-motd/secrets.conf
+
 # Clear /etc/motd if it was set by us (we can't be 100% sure; only blank it).
 : >/etc/motd 2>/dev/null || true
 

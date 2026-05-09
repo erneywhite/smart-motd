@@ -219,6 +219,7 @@ _inst 0755 "$WORK"/bin/motd-generate     "$PREFIX/bin/motd-generate"
 _inst 0755 "$WORK"/bin/motd-cache-update "$PREFIX/bin/motd-cache-update"
 _inst 0755 "$WORK"/bin/motd-setup        "$PREFIX/bin/motd-setup"
 _inst 0755 "$WORK"/bin/motd-doctor       "$PREFIX/bin/motd-doctor"
+_inst 0755 "$WORK"/bin/motd-ssh-alert    "$PREFIX/bin/motd-ssh-alert"
 _inst 0755 "$WORK"/bin/motd-uninstall    "$PREFIX/bin/motd-uninstall"
 _inst 0755 "$WORK"/bin/smart-motd        "$BIN_DIR/smart-motd"
 _inst 0644 "$WORK"/lib/common.sh         "$PREFIX/lib/common.sh"
@@ -331,6 +332,30 @@ elif command -v crontab >/dev/null 2>&1; then
 else
     warn "No scheduler (systemd / cron) detected — cache won't auto-refresh"
     note "Run 'sudo smart-motd update-cache' periodically yourself."
+fi
+
+# ---------- SSH login alert PAM hook ----------
+# We always wire the hook so users can flip TELEGRAM_ALERTS_ENABLED on
+# later via `sudo smart-motd setup` without re-touching pam.d. The script
+# itself bails immediately when the feature is off (zero overhead).
+if [[ -f /etc/pam.d/sshd ]]; then
+    PAM_LINE="session optional pam_exec.so $PREFIX/bin/motd-ssh-alert"
+    if grep -q "motd-ssh-alert" /etc/pam.d/sshd 2>/dev/null; then
+        ok "SSH alert PAM hook already in /etc/pam.d/sshd"
+    else
+        # Backup once before our first edit so the operator can restore.
+        if [[ ! -f /etc/pam.d/sshd.smart-motd.bak ]]; then
+            cp /etc/pam.d/sshd /etc/pam.d/sshd.smart-motd.bak 2>/dev/null || true
+        fi
+        if printf '\n# smart-motd SSH login alert hook\n%s\n' "$PAM_LINE" >> /etc/pam.d/sshd 2>/dev/null; then
+            ok "Wired SSH alert hook into /etc/pam.d/sshd"
+            note "Backup at /etc/pam.d/sshd.smart-motd.bak; uninstall removes the line."
+        else
+            warn "Couldn't append to /etc/pam.d/sshd — SSH alert hook NOT installed"
+        fi
+    fi
+else
+    note "/etc/pam.d/sshd not present — skipping SSH alert hook (alerts won't fire on login)"
 fi
 
 print_summary

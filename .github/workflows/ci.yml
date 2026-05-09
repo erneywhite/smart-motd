@@ -42,6 +42,7 @@ jobs:
             bin/motd-cache-update \
             bin/motd-setup \
             bin/motd-doctor \
+            bin/motd-ssh-alert \
             bin/motd-uninstall \
             bin/smart-motd \
             lib/common.sh \
