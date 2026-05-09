@@ -377,6 +377,41 @@ qstr() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 
 # cache_kv_load is defined in common.sh and re-used here.
 
+# ---- upgrade-available check ----
+# Hits GitHub releases/latest to find the newest published version, compares
+# against the locally-installed VERSION file, and stores the new version
+# string in the cache when an upgrade is available (otherwise empty).
+# Network failures preserve the previous cache value (no false "up-to-date"
+# claim from a transient curl error).
+cache_update_version_check() {
+    have curl || { cache_write "upgrade_available" ""; return; }
+    local local_v latest_v older
+    local_v=$(cat "${SMART_MOTD_PREFIX:-/usr/local/lib/smart-motd}/VERSION" 2>/dev/null | tr -d ' \r\n')
+    [[ -z "$local_v" ]] && return
+
+    latest_v=$(curl -fsS --max-time 4 \
+        "https://api.github.com/repos/erneywhite/smart-motd/releases/latest" 2>/dev/null \
+        | grep '"tag_name"' \
+        | head -1 \
+        | sed -E 's/.*"v?([^"]+)".*/\1/')
+    # Network / parse failure → keep whatever we had, don't clobber to empty.
+    [[ -z "$latest_v" ]] && return
+
+    if [[ "$latest_v" == "$local_v" ]]; then
+        cache_write "upgrade_available" ""
+        return
+    fi
+    # Use natural-version sort to make sure latest is actually newer
+    # (don't show "upgrade available" if the local install is somehow
+    # ahead — e.g. someone running off main between releases).
+    older=$(printf '%s\n%s\n' "$local_v" "$latest_v" | sort -V | head -1)
+    if [[ "$older" == "$local_v" ]]; then
+        cache_write "upgrade_available" "$latest_v"
+    else
+        cache_write "upgrade_available" ""
+    fi
+}
+
 # ---- network rx/tx rates ----
 # Read /sys/class/net/<iface>/statistics/{rx,tx}_bytes counters now,
 # diff against the snapshot from the previous cache run, and store
@@ -507,4 +542,5 @@ cache_update_all() {
     cache_update_vpn
     cache_update_zpool
     cache_update_network_rates
+    cache_update_version_check
 }

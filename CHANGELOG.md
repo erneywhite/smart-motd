@@ -3,6 +3,30 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.0]
+
+### Added — passive upgrade notice
+- New section `upgrade_notice` (last in `SECTION_ORDER`) shows
+  a single line at the bottom of the MOTD when a newer
+  smart-motd release is published on GitHub:
+  ```
+   ↑ smart-motd v1.6.0 available (you have v1.5.4) — run sudo smart-motd upgrade
+  ```
+  Renders nothing when up-to-date, network is unavailable, or
+  the local install is somehow ahead of the published release.
+- New `cache_update_version_check` cache step. Runs every 5
+  minutes alongside the other cache jobs, hits
+  `https://api.github.com/repos/erneywhite/smart-motd/releases/latest`,
+  compares to the local `VERSION` file with natural-version
+  sort (`sort -V`), and writes the newer-version string to
+  `/var/cache/smart-motd/upgrade_available`. Network failures
+  preserve the previous cache value (no false "up-to-date"
+  flicker from a transient curl error).
+- Toggle in the wizard's first multiselect, default on.
+  Disable in `/etc/smart-motd/config.conf` with
+  `UPGRADE_NOTICE_ENABLED=false` if you'd rather check via
+  `smart-motd version` manually.
+
 ## [1.5.4]
 
 ### Fixed

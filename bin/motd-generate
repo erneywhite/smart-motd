@@ -52,6 +52,7 @@ WEATHER_ENABLED=false
 NTP_ENABLED=auto
 RAID_ENABLED=auto
 VPN_ENABLED=auto
+UPGRADE_NOTICE_ENABLED=true
 FOOTER_ENABLED=true
 
 SECTION_ORDER=(
@@ -62,6 +63,7 @@ SECTION_ORDER=(
     docker podman kubernetes vpn
     directories lastlogin weather
     footer
+    upgrade_notice
 )
 
 # Load user config (if it exists).
