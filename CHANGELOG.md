@@ -3,6 +3,17 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.1]
+
+### Added
+- Bash tab completion for `smart-motd <subcommand>`. Type
+  `smart-motd <TAB>` to see all commands; `smart-motd s<TAB>`
+  cycles through `show / setup / status`. Installed to
+  `/usr/share/bash-completion/completions/smart-motd` (or
+  `/etc/bash_completion.d/smart-motd` if the modern dir doesn't
+  exist). Activates in any new shell — no manual sourcing needed.
+  Also works in zsh sessions that have run `bashcompinit`.
+
 ## [1.4.0]
 
 ### Added — Telegram SSH login alerts

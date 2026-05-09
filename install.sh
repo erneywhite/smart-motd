@@ -232,6 +232,21 @@ done
 [[ -f "$WORK/config.example.conf" ]] && _inst 0644 "$WORK/config.example.conf" "$PREFIX/config.example.conf"
 ok "Installed binaries, libs, and section modules"
 
+# Bash tab completion. Prefer the modern bash-completion location, fall back
+# to the legacy one. Either gets auto-loaded by bash-completion at shell
+# start-up — no further wiring needed.
+if [[ -f "$WORK/completions/smart-motd.bash" ]]; then
+    if [[ -d /usr/share/bash-completion/completions ]]; then
+        _inst 0644 "$WORK/completions/smart-motd.bash" \
+            /usr/share/bash-completion/completions/smart-motd
+        ok "Bash tab completion installed (open a new shell to activate)"
+    elif [[ -d /etc/bash_completion.d ]]; then
+        _inst 0644 "$WORK/completions/smart-motd.bash" \
+            /etc/bash_completion.d/smart-motd
+        ok "Bash tab completion installed (open a new shell to activate)"
+    fi
+fi
+
 # ---------- example config if none ----------
 if [[ ! -f "$CONFIG_DIR/config.conf" ]] && [[ -f "$WORK/config.example.conf" ]]; then
     cp "$WORK/config.example.conf" "$CONFIG_DIR/config.conf"

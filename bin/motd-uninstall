@@ -72,6 +72,10 @@ rm -f /etc/smart-motd/secrets.conf
 # Clear /etc/motd if it was set by us (we can't be 100% sure; only blank it).
 : >/etc/motd 2>/dev/null || true
 
+# Bash completion files
+rm -f /usr/share/bash-completion/completions/smart-motd \
+      /etc/bash_completion.d/smart-motd
+
 # Files
 rm -rf "$PREFIX" "$CACHE_DIR"
 rm -f "$BIN_DIR/smart-motd"
