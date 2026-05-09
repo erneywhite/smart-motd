@@ -43,6 +43,7 @@ jobs:
             bin/motd-setup \
             bin/motd-doctor \
             bin/motd-ssh-alert \
+            bin/motd-recap \
             bin/motd-uninstall \
             bin/smart-motd \
             lib/common.sh \

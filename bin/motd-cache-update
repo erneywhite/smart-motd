@@ -30,6 +30,11 @@ fi
 
 cache_update_all
 
+# Daily Telegram recap — fires at most once per day, gated on the
+# configured hour. The script no-ops when the feature is disabled.
+[[ -x "${SMART_MOTD_PREFIX}/bin/motd-recap" ]] && \
+    "${SMART_MOTD_PREFIX}/bin/motd-recap" >/dev/null 2>&1 || true
+
 # Refresh pam_motd's dynamic cache (Debian/Ubuntu).
 # pam_motd reads /run/motd.dynamic at login; without this, changes to our
 # config and freshly-cached values aren't reflected until pam_motd's own

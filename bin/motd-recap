@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# smart-motd: once-a-day Telegram recap. Triggered from motd-cache-update
+# when the current hour matches TELEGRAM_RECAP_HOUR. Uses a state file to
+# guarantee at-most-one delivery per calendar day even if the cache job
+# fires multiple times within the configured hour (which it does — every
+# 5 minutes by default).
+
+set -u
+
+SMART_MOTD_PREFIX="${SMART_MOTD_PREFIX:-/usr/local/lib/smart-motd}"
+SMART_MOTD_CONFIG="${SMART_MOTD_CONFIG:-/etc/smart-motd/config.conf}"
+SMART_MOTD_SECRETS="${SMART_MOTD_SECRETS:-/etc/smart-motd/secrets.conf}"
+SMART_MOTD_CACHE_DIR="${SMART_MOTD_CACHE_DIR:-/var/cache/smart-motd}"
+
+TELEGRAM_ALERTS_ENABLED=false
+TELEGRAM_ALERTS_LANG=en
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""
+TELEGRAM_THREAD_ID=""
+TELEGRAM_RECAP_ENABLED=false
+TELEGRAM_RECAP_HOUR=9
+
+# shellcheck disable=SC1090
+[[ -r "$SMART_MOTD_CONFIG" ]]  && . "$SMART_MOTD_CONFIG"
+# shellcheck disable=SC1090
+[[ -r "$SMART_MOTD_SECRETS" ]] && . "$SMART_MOTD_SECRETS"
+
+[[ "$TELEGRAM_ALERTS_ENABLED" == "true" ]] || exit 0
+[[ "$TELEGRAM_RECAP_ENABLED"  == "true" ]] || exit 0
+[[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]] || exit 0
+command -v curl >/dev/null 2>&1 || exit 0
+
+NOW_HOUR=$(date +%H)
+NOW_HOUR=$((10#$NOW_HOUR))   # strip leading zero
+TODAY=$(date +%Y-%m-%d)
+
+# Only fire during the configured hour
+[[ "$NOW_HOUR" == "$TELEGRAM_RECAP_HOUR" ]] || exit 0
+
+# At-most-once per day: bail if we already sent today.
+STATE="$SMART_MOTD_CACHE_DIR/recap_last_sent"
+if [[ -r "$STATE" ]]; then
+    LAST=$(cat "$STATE" 2>/dev/null)
+    [[ "$LAST" == "$TODAY" ]] && exit 0
+fi
+
+# ---------- gather data ----------
+
+HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
+
+# SSH logins in the last 24h (best-effort, journalctl preferred)
+LOGINS_24H=0
+if command -v journalctl >/dev/null 2>&1; then
+    LOGINS_24H=$(journalctl _COMM=sshd --since "24 hours ago" --no-pager 2>/dev/null \
+        | grep -cE 'Accepted (password|publickey|keyboard-interactive|gssapi)' || true)
+elif command -v last >/dev/null 2>&1; then
+    LOGINS_24H=$(last -s -24hours 2>/dev/null | grep -cv '^reboot\|^wtmp\|^$' || true)
+fi
+LOGINS_24H="${LOGINS_24H:-0}"
+
+# Failed SSH attempts in last 24h — pull from cache (already populated)
+FAILED_SSH=0
+if [[ -r "$SMART_MOTD_CACHE_DIR/security.kv" ]]; then
+    # shellcheck disable=SC1091
+    . "$SMART_MOTD_CACHE_DIR/security.kv"
+    FAILED_SSH="${FAILED_SSH:-0}"
+fi
+
+# Pending package updates from cache
+UPDATES_COUNT=0
+UPDATES_SECURITY=0
+[[ -r "$SMART_MOTD_CACHE_DIR/packages_count" ]] && \
+    UPDATES_COUNT=$(cat "$SMART_MOTD_CACHE_DIR/packages_count" 2>/dev/null)
+[[ -r "$SMART_MOTD_CACHE_DIR/packages_security" ]] && \
+    UPDATES_SECURITY=$(cat "$SMART_MOTD_CACHE_DIR/packages_security" 2>/dev/null)
+UPDATES_COUNT="${UPDATES_COUNT:-0}"
+UPDATES_SECURITY="${UPDATES_SECURITY:-0}"
+
+# Reboot required?
+REBOOT_REQ="no"
+[[ -f /var/run/reboot-required ]] && REBOOT_REQ="yes"
+if command -v needs-restarting >/dev/null 2>&1; then
+    needs-restarting -r >/dev/null 2>&1 || REBOOT_REQ="yes"
+fi
+
+# Uptime in human form
+UPTIME_HUMAN=""
+if [[ -r /proc/uptime ]]; then
+    secs=$(awk '{print int($1)}' /proc/uptime)
+    days=$(( secs / 86400 ))
+    hours=$(( (secs % 86400) / 3600 ))
+    UPTIME_HUMAN="${days}d ${hours}h"
+fi
+
+# ---------- compose message ----------
+
+if [[ "$TELEGRAM_ALERTS_LANG" == "ru" ]]; then
+    MSG="📊 Ежедневная сводка · ${HOSTNAME_SHORT}
+🗓 ${TODAY}
+
+🔓 SSH-входов за 24ч: ${LOGINS_24H}
+🛡 Failed-попыток: ${FAILED_SSH}
+📦 Обновлений пакетов: ${UPDATES_COUNT}"
+    [[ "$UPDATES_SECURITY" -gt 0 ]] && MSG+=" (security: ${UPDATES_SECURITY})"
+    [[ -n "$UPTIME_HUMAN" ]] && MSG+="
+⏱ Uptime: ${UPTIME_HUMAN}"
+    if [[ "$REBOOT_REQ" == "yes" ]]; then
+        MSG+="
+⚠️ Требуется перезагрузка"
+    fi
+else
+    MSG="📊 Daily recap · ${HOSTNAME_SHORT}
+🗓 ${TODAY}
+
+🔓 SSH logins in 24h: ${LOGINS_24H}
+🛡 Failed attempts: ${FAILED_SSH}
+📦 Package updates: ${UPDATES_COUNT}"
+    [[ "$UPDATES_SECURITY" -gt 0 ]] && MSG+=" (security: ${UPDATES_SECURITY})"
+    [[ -n "$UPTIME_HUMAN" ]] && MSG+="
+⏱ Uptime: ${UPTIME_HUMAN}"
+    if [[ "$REBOOT_REQ" == "yes" ]]; then
+        MSG+="
+⚠️ Reboot required"
+    fi
+fi
+
+# ---------- send ----------
+
+URL="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
+args=(
+    --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}"
+    --data-urlencode "text=${MSG}"
+    --data-urlencode "disable_web_page_preview=true"
+)
+[[ -n "$TELEGRAM_THREAD_ID" ]] && args+=( --data-urlencode "message_thread_id=${TELEGRAM_THREAD_ID}" )
+
+if curl -fsS --max-time 10 "${args[@]}" "$URL" >/dev/null 2>&1; then
+    # Mark today as sent so we don't fire again this hour
+    mkdir -p "$SMART_MOTD_CACHE_DIR"
+    printf '%s\n' "$TODAY" > "$STATE"
+fi
+
+exit 0

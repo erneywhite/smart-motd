@@ -3,6 +3,30 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.0]
+
+### Added
+
+- **IP whitelist for Telegram SSH alerts** — new
+  `TELEGRAM_ALERTS_IP_WHITELIST` array. Each entry is either a
+  single IPv4 (`203.0.113.5`) or a CIDR block (`192.168.1.0/24`,
+  `10.0.0.0/8`). Logins from matching addresses silently skip
+  the Telegram notification. Useful for suppressing alerts about
+  your own home / office / VPN IPs without losing visibility on
+  external logins. Wizard adds a list-editor page.
+- **`smart-motd watch [SEC]`** — re-renders the MOTD every SEC
+  seconds (default 5). Uses an alternate-screen buffer
+  (`\e[?1049h`) so your scrollback isn't filled with snapshots,
+  and restores the cursor + scrollback on Ctrl+C. Handy for
+  monitoring on a side terminal / dashboard.
+- **Daily Telegram recap** — opt-in once-a-day summary message
+  with the last 24h's SSH logins, failed-auth count, pending
+  package updates (incl. security count), reboot-required flag
+  and uptime. Configurable hour-of-day. Bilingual (en/ru, same
+  pref as alerts). Triggered from the cache-refresh job at the
+  matching hour, with a state file to guarantee at-most-once
+  delivery per day.
+
 ## [1.4.2]
 
 ### Fixed
@@ -48,10 +72,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
   ```
   🔓 SSH login   (or "🔓 SSH вход на сервер" in Russian)
   👤 User: root
-  🌐 IP: 152.53.135.96
-  🌐 rDNS: toristarm.online
-  🖥 Server: node1
-  🕐 2026-05-08 22:12:46 MSK
+  🌐 IP: 203.0.113.42
+  🌐 rDNS: client.example.net
+  🖥 Server: web-01
+  🕐 2026-05-08 22:12:46 UTC
   ```
 - Hooked into PAM via a single `session optional pam_exec.so …`
   line appended to `/etc/pam.d/sshd` (with a `.smart-motd.bak`

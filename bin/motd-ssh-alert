@@ -26,6 +26,7 @@ TELEGRAM_ALERTS_LANG=en
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
 TELEGRAM_THREAD_ID=""
+TELEGRAM_ALERTS_IP_WHITELIST=()
 
 # shellcheck disable=SC1090
 [[ -r "$SMART_MOTD_CONFIG" ]]  && . "$SMART_MOTD_CONFIG"
@@ -39,6 +40,40 @@ command -v curl >/dev/null 2>&1 || exit 0
 USER_NAME="${PAM_USER:-unknown}"
 RHOST="${PAM_RHOST:-unknown}"
 HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
+
+# IP whitelist — silently skip the alert when the connecting IP matches an
+# entry in TELEGRAM_ALERTS_IP_WHITELIST. Each entry is either a single IPv4
+# (e.g. "203.0.113.5") or a CIDR block (e.g. "192.168.1.0/24" or
+# "10.0.0.0/8"). Useful to suppress notifications about your own logins
+# from a known office / home / VPN range.
+if [[ ${#TELEGRAM_ALERTS_IP_WHITELIST[@]} -gt 0 ]] && [[ "$RHOST" =~ ^[0-9.]+$ ]]; then
+    _ip_to_int() {
+        local ip="$1" o1 o2 o3 o4
+        IFS=. read -r o1 o2 o3 o4 <<<"$ip"
+        printf '%d' "$(( (o1<<24) + (o2<<16) + (o3<<8) + o4 ))"
+    }
+    rhost_int=$(_ip_to_int "$RHOST" 2>/dev/null) || rhost_int=""
+    if [[ -n "$rhost_int" ]]; then
+        for entry in "${TELEGRAM_ALERTS_IP_WHITELIST[@]}"; do
+            [[ -z "$entry" ]] && continue
+            if [[ "$entry" == */* ]]; then
+                # CIDR: compare RHOST/mask against entry/mask
+                net="${entry%/*}"; bits="${entry#*/}"
+                [[ "$bits" =~ ^[0-9]+$ ]] || continue
+                (( bits >= 0 && bits <= 32 )) || continue
+                net_int=$(_ip_to_int "$net" 2>/dev/null) || continue
+                if (( bits == 0 )); then exit 0; fi
+                mask=$(( 0xFFFFFFFF & (~((1 << (32 - bits)) - 1)) ))
+                if (( (rhost_int & mask) == (net_int & mask) )); then
+                    exit 0
+                fi
+            else
+                # Single IP literal
+                [[ "$RHOST" == "$entry" ]] && exit 0
+            fi
+        done
+    fi
+fi
 
 # Best-effort reverse DNS with a short timeout — never block login on slow DNS.
 RDNS=""

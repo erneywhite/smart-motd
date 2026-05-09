@@ -7,7 +7,7 @@ Cross-distro (Debian / Ubuntu / RHEL / CentOS / Rocky / Alma / Fedora / Arch / o
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.4.2-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.5.0-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE%20%7C%20Alpine-blue)
 
 ## Preview
@@ -76,7 +76,7 @@ W e l c o m e   t o   y o u r   s e r v e r
 - **13 color palettes** — `default`, `ocean`, `forest`, `sunset`, `amber`, `mono`, `matrix`, `neon`, `coral`, `mint`, `sky`, `gold`, `snow`.
 - **Heavy data is cached** — every slow query (apt/dnf updates, public IP, SSL expiry, `du` on big dirs, `smartctl`, journalctl SSH-fail counts, docker/podman/kubernetes lists, weather) refreshes in a 5-minute systemd timer. The on-login path just sources cache files — login stays under ~50 ms even on busy hosts with thousands of failed-SSH log entries.
 - **`pam_motd` integration** — on Debian/Ubuntu the cache job also regenerates `/run/motd.dynamic`, so config changes show up at the very next login (instead of waiting for pam_motd's own refresh schedule to skip a few logins).
-- **Optional Telegram SSH-login alerts** — get a notification with user / IP / rDNS / hostname / timestamp on every login. Bot token stored root-only; English or Russian message language; PAM-hooked, runs in the background so login is never delayed.
+- **Optional Telegram SSH-login alerts** — get a notification with user / IP / rDNS / hostname / timestamp on every login. Bot token stored root-only; English or Russian message language; IP whitelist (CIDR-aware) to suppress alerts for your own home/office/VPN ranges; optional once-a-day recap with login counts + pending updates + reboot status. PAM-hooked, runs in the background so login is never delayed.
 - **Cross-distro install** — the installer detects your distro family and wires into the right hook automatically (`/etc/update-motd.d/` for Debian-family, systemd timer → `/etc/motd` for RHEL/openSUSE/Arch, cron fallback for Alpine).
 
 ## Install
@@ -105,6 +105,7 @@ curl -fsSL https://raw.githubusercontent.com/erneywhite/smart-motd/main/install.
 
 ```
 smart-motd show                # preview the MOTD right now
+smart-motd watch [SEC]         # re-render every SEC seconds (default 5) — alt-screen
 sudo smart-motd setup          # re-run the interactive wizard
 sudo smart-motd update-cache   # refresh cached values immediately
 sudo smart-motd edit           # open the config in $EDITOR

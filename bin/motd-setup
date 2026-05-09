@@ -50,6 +50,9 @@ TELEGRAM_ALERTS_LANG=""
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
 TELEGRAM_THREAD_ID=""
+TELEGRAM_ALERTS_IP_WHITELIST=()
+TELEGRAM_RECAP_ENABLED=false
+TELEGRAM_RECAP_HOUR=9
 DOCKER_FILTER=""
 COLORS_ENABLED=true
 THEME="classic"
@@ -931,6 +934,46 @@ Pick 'Yes' to be re-prompted for bot token, chat ID and thread ID. Existing valu
         *)         TELEGRAM_ALERTS_LANG=en ;;
     esac
 
+    # IP whitelist — silently skip alerts for known-good source IPs/ranges.
+    mapfile -t TELEGRAM_ALERTS_IP_WHITELIST < <(wizard_list \
+        "$(_l "Whitelist of source IPs (no alert when matched)" "Белый список IP (для них алерт НЕ шлётся)")" \
+        "$(_l \
+"Optional. Each entry is either a single IPv4 or a CIDR block. Logins from these addresses won't trigger an alert — useful for your own home/office IP or a VPN range.
+
+Examples:
+  203.0.113.5          (single IP)
+  192.168.1.0/24       (whole subnet)
+  10.0.0.0/8           (private range)
+
+Leave empty to alert on every login." \
+"Опционально. Каждая запись — либо один IPv4, либо CIDR-блок. Входы с этих адресов НЕ вызовут алерт — удобно для своего домашнего/офисного IP или VPN-подсети.
+
+Примеры:
+  203.0.113.5          (один IP)
+  192.168.1.0/24       (вся подсеть)
+  10.0.0.0/8           (приватный диапазон)
+
+Пусто = слать на каждый вход.")" \
+        "${TELEGRAM_ALERTS_IP_WHITELIST[@]}")
+
+    # Daily recap toggle — opt-in, off by default.
+    if wizard_yesno \
+        "$(_l "Enable daily recap?" "Включить ежедневную сводку?")" \
+        "$(_l \
+"Optional. Sends one message per day to the same chat with a summary: total SSH logins in the last 24h, failed-auth count, pending package updates, reboot-required status. Independent from per-login alerts." \
+"Опционально. Раз в сутки шлёт в тот же чат сводку: количество входов за 24ч, неудачные попытки, доступные обновления пакетов, нужна ли перезагрузка. Не зависит от алертов на каждый логин.")" \
+        "$([[ "${TELEGRAM_RECAP_ENABLED:-false}" == "true" ]] && echo y || echo n)"; then
+        TELEGRAM_RECAP_ENABLED=true
+        TELEGRAM_RECAP_HOUR=$(wizard_text \
+            "$(_l "Hour of day to send recap (0-23, server local time)" "Час отправки сводки (0-23, локальное время сервера)")" \
+            "$(_l \
+"24-hour clock, server's timezone. E.g. 9 = 9:00 AM. Recap is fired by the cache timer when the hour matches." \
+"24-часовой формат, часовой пояс сервера. Например 9 = 9:00 утра. Сводка отправляется cache-таймером при совпадении часа.")" \
+            "${TELEGRAM_RECAP_HOUR:-9}")
+    else
+        TELEGRAM_RECAP_ENABLED=false
+    fi
+
     # Test send right here, before save — so the operator sees it work
     # before committing the config to disk.
     if wizard_yesno \
@@ -1055,6 +1098,9 @@ TS=$(date '+%Y-%m-%d %H:%M:%S')
     echo "# ---- Telegram SSH alerts ----"
     echo "# Bot token / chat ID / thread ID live in secrets.conf (root-only)."
     echo "TELEGRAM_ALERTS_LANG=$(qstr "${TELEGRAM_ALERTS_LANG:-en}")"
+    write_array TELEGRAM_ALERTS_IP_WHITELIST "${TELEGRAM_ALERTS_IP_WHITELIST[@]}"
+    echo "TELEGRAM_RECAP_ENABLED=${TELEGRAM_RECAP_ENABLED:-false}"
+    echo "TELEGRAM_RECAP_HOUR=${TELEGRAM_RECAP_HOUR:-9}"
     echo
     echo "# ---- Colors ----"
     echo "COLORS_ENABLED=$COLORS_ENABLED"

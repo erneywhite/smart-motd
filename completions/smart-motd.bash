@@ -9,7 +9,7 @@ _smart_motd() {
 
     # Only complete the first positional — none of our subcommands take args.
     if [[ "$COMP_CWORD" -eq 1 ]]; then
-        local opts="show setup update-cache edit status doctor version upgrade uninstall help"
+        local opts="show watch setup update-cache edit status doctor version upgrade uninstall help"
         # shellcheck disable=SC2207
         COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
         return 0

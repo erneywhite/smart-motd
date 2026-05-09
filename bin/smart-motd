@@ -14,6 +14,7 @@ Usage: smart-motd <command>
 
 Commands:
   show           Print the MOTD now (preview).
+  watch [SEC]    Re-render the MOTD every SEC seconds (default 5).
   setup          Re-run the interactive configuration wizard.
   update-cache   Refresh cached values (updates count, SSL, public IP, …).
   edit           Open the config file in \$EDITOR.
@@ -53,6 +54,25 @@ _latest_version() {
 cmd="${1:-help}"
 case "$cmd" in
     show)         exec "${SMART_MOTD_PREFIX}/bin/motd-generate" ;;
+    watch)
+        # Re-render every $interval seconds. Uses alternate-screen ESC so
+        # the user's scrollback isn't filled with snapshots, and restores
+        # on Ctrl+C.
+        interval="${2:-5}"
+        if ! [[ "$interval" =~ ^[0-9]+$ ]] || (( interval < 1 )); then
+            echo "smart-motd watch: interval must be a positive integer" >&2
+            exit 1
+        fi
+        # Switch to alt-screen, hide cursor, restore on exit.
+        printf '\e[?1049h\e[?25l'
+        trap 'printf "\e[?25h\e[?1049l"; exit 0' INT TERM EXIT
+        while true; do
+            printf '\e[H\e[2J'    # home + clear
+            SMART_MOTD_FORCE_COLOR=1 "${SMART_MOTD_PREFIX}/bin/motd-generate"
+            printf '\n\e[2m  smart-motd watch · refreshing every %ss · Ctrl+C to exit\e[0m\n' "$interval"
+            sleep "$interval"
+        done
+        ;;
     update-cache) exec "${SMART_MOTD_PREFIX}/bin/motd-cache-update" ;;
     setup)        exec "${SMART_MOTD_PREFIX}/bin/motd-setup" ;;
     doctor)       exec "${SMART_MOTD_PREFIX}/bin/motd-doctor" ;;
