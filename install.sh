@@ -257,6 +257,13 @@ else
     ok "Existing config kept at ${CONFIG_DIR}/config.conf"
 fi
 
+# Reset the upgrade-available cache. Without this, an `smart-motd upgrade`
+# from version A to version B leaves the file holding "B" — and the very
+# next login renders 'smart-motd vB available (you have vB)' until the
+# next cache tick (~5 min) refreshes it. Truncating now means the section
+# stays silent until the cache job runs and writes a real signal.
+: > "$CACHE_DIR/upgrade_available" 2>/dev/null || true
+
 # ---------- distro-specific MOTD hook ----------
 case "$DISTRO_FAMILY" in
     debian)

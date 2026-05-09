@@ -7,7 +7,7 @@ Cross-distro (Debian / Ubuntu / RHEL / CentOS / Rocky / Alma / Fedora / Arch / o
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.6.1-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.6.2-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE%20%7C%20Alpine-blue)
 
 ## Preview
@@ -329,6 +329,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 Highlights:
 
+- **v1.6.x** — Passive upgrade notice at the bottom of the MOTD when a newer release is published on GitHub (system parameter, always on, hidden when up-to-date). Sanity-check + post-install cache reset so no false-positive right after `smart-motd upgrade`.
 - **v1.5.x** — Telegram alert IP whitelist (CIDR-aware), `smart-motd watch [SEC]` for live re-render with alt-screen, opt-in once-a-day Telegram recap (logins / failed attempts / pending updates / reboot status / uptime). Personal-chat-or-group destination picker. Server identity in alerts now uses kernel `hostname` + primary-interface IP — works correctly behind NAT and on cloud VMs where DNS-resolved FQDN returns auto-generated junk.
 - **v1.4.x** — Telegram SSH-login alerts with PAM-hook + bilingual messages (en/ru) + test-send in the wizard. Bash tab completion. Setup wizard preserves existing config / credentials on re-runs (no more Enter-mashing wipe).
 - **v1.3.x** — Per-interface rx/tx byte rate (5-min averaged) in the Network section, with column alignment. Installer hardened for Docker / chroot environments and for hosts with a non-coreutils `install` binary in `$PATH`.

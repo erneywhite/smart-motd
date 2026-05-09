@@ -3,6 +3,25 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.6.2]
+
+### Fixed
+- Right after `sudo smart-motd upgrade`, the MOTD reported a
+  bogus "↑ smart-motd vX.Y.Z available (you have vX.Y.Z)" until
+  the cache job's next 5-minute tick. Two-layer fix:
+  - **install.sh** truncates `/var/cache/smart-motd/upgrade_available`
+    at the end of every install / upgrade. The notice stays silent
+    until the next cache tick writes a real signal.
+  - **`section_upgrade_notice`** now does its own sanity check
+    before rendering: compares the cached "newer" string against
+    the locally-installed VERSION via `sort -V`, and refuses to
+    show the notice unless the cached version is *strictly*
+    greater than local. So even if the cache file is out of date
+    for any reason (manual `update-cache`, restored backup, etc.),
+    no false-positive notice is shown. Verified against six
+    edge cases including natural-version ordering (`1.10.0` >
+    `1.9.0`).
+
 ## [1.6.1]
 
 ### Changed
