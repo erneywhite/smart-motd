@@ -326,7 +326,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 Highlights:
 
-- **v1.5.0** — Telegram alert IP whitelist (CIDR-aware), `smart-motd watch [SEC]` for live re-render with alt-screen, and an opt-in once-a-day Telegram recap (logins / failed attempts / pending updates / reboot status / uptime).
+- **v1.5.x** — Telegram alert IP whitelist (CIDR-aware), `smart-motd watch [SEC]` for live re-render with alt-screen, opt-in once-a-day Telegram recap (logins / failed attempts / pending updates / reboot status / uptime). Personal-chat-or-group destination picker. Server identity in alerts now uses kernel `hostname` + primary-interface IP — works correctly behind NAT and on cloud VMs where DNS-resolved FQDN returns auto-generated junk.
 - **v1.4.x** — Telegram SSH-login alerts with PAM-hook + bilingual messages (en/ru) + test-send in the wizard. Bash tab completion. Setup wizard preserves existing config / credentials on re-runs (no more Enter-mashing wipe).
 - **v1.3.x** — Per-interface rx/tx byte rate (5-min averaged) in the Network section, with column alignment. Installer hardened for Docker / chroot environments and for hosts with a non-coreutils `install` binary in `$PATH`.
 - **v1.2.0** — OS line in System status (`Ubuntu 22.04.3 LTS` / `Debian GNU/Linux 12` / …). Wizard chrome switched to ASCII so it works on minimal-font terminals.
