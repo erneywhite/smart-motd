@@ -218,8 +218,8 @@ Or just stick to the ASCII-friendly themes that work everywhere: `classic`, `sli
 ```
 🔓 SSH login
 👤 User: root
-🌐 IP: 152.53.135.96
-🌐 rDNS: toristarm.online
+🌐 IP: 127.0.0.1
+🌐 rDNS: example.com
 🖥 Server: node1
 🕐 2026-05-08 22:12:46 MSK
 ```
