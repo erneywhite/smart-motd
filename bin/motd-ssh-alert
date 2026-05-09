@@ -40,20 +40,27 @@ command -v curl >/dev/null 2>&1 || exit 0
 USER_NAME="${PAM_USER:-unknown}"
 RHOST="${PAM_RHOST:-unknown}"
 
-# Server identity for the message: prefer full hostname (FQDN if configured),
-# annotated with the server's outward-facing IP in parentheses. Helps the
-# operator instantly tell which of N servers fired the alert.
+# Server identity for the message: full hostname (FQDN if configured) plus
+# the server's primary interface IP in parentheses. Helps the operator
+# instantly tell which of N servers fired the alert.
+#
+# Priority deliberately puts the LOCAL primary interface IP first — for
+# servers behind NAT (home boxes, cloud VMs with no public IP attached,
+# k8s nodes …) the public IP is the NAT gateway's address, which is the
+# SAME for every server behind that NAT and useless for identification.
+# `ip route get` consults the kernel routing table without sending any
+# traffic, returning whatever source IP the box would use for outbound.
 HOSTNAME_FULL="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"
 SERVER_IP=""
-if [[ -r "${SMART_MOTD_CACHE_DIR:-/var/cache/smart-motd}/public_ip" ]]; then
-    SERVER_IP=$(cat "${SMART_MOTD_CACHE_DIR:-/var/cache/smart-motd}/public_ip" 2>/dev/null)
-    [[ "$SERVER_IP" == "unavailable" ]] && SERVER_IP=""
-fi
-if [[ -z "$SERVER_IP" ]] && command -v ip >/dev/null 2>&1; then
-    # Fallback: source IP we'd use to reach the public internet. Doesn't
-    # generate any traffic — just consults the kernel's routing table.
+if command -v ip >/dev/null 2>&1; then
     SERVER_IP=$(ip route get 1.1.1.1 2>/dev/null \
         | awk '{for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}')
+fi
+# Last-resort fallback: cached public IP. Only useful when `ip` isn't
+# available (rare) — falls back to the NAT-gateway address otherwise.
+if [[ -z "$SERVER_IP" ]] && [[ -r "${SMART_MOTD_CACHE_DIR:-/var/cache/smart-motd}/public_ip" ]]; then
+    SERVER_IP=$(cat "${SMART_MOTD_CACHE_DIR:-/var/cache/smart-motd}/public_ip" 2>/dev/null)
+    [[ "$SERVER_IP" == "unavailable" ]] && SERVER_IP=""
 fi
 if [[ -n "$SERVER_IP" ]]; then
     SERVER_DISPLAY="${HOSTNAME_FULL} (${SERVER_IP})"

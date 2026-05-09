@@ -46,17 +46,19 @@ fi
 
 # ---------- gather data ----------
 
-# Server identity: full hostname + outward-facing IP, same shape as
-# motd-ssh-alert so the operator immediately knows which box this came from.
+# Server identity: full hostname + primary interface IP, same shape as
+# motd-ssh-alert so the operator immediately knows which box this came
+# from. Local interface IP first because behind NAT the public IP is the
+# gateway address — useless for distinguishing servers.
 HOSTNAME_FULL="$(hostname -f 2>/dev/null || hostname 2>/dev/null || echo unknown)"
 SERVER_IP=""
-if [[ -r "$SMART_MOTD_CACHE_DIR/public_ip" ]]; then
-    SERVER_IP=$(cat "$SMART_MOTD_CACHE_DIR/public_ip" 2>/dev/null)
-    [[ "$SERVER_IP" == "unavailable" ]] && SERVER_IP=""
-fi
-if [[ -z "$SERVER_IP" ]] && command -v ip >/dev/null 2>&1; then
+if command -v ip >/dev/null 2>&1; then
     SERVER_IP=$(ip route get 1.1.1.1 2>/dev/null \
         | awk '{for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}')
+fi
+if [[ -z "$SERVER_IP" ]] && [[ -r "$SMART_MOTD_CACHE_DIR/public_ip" ]]; then
+    SERVER_IP=$(cat "$SMART_MOTD_CACHE_DIR/public_ip" 2>/dev/null)
+    [[ "$SERVER_IP" == "unavailable" ]] && SERVER_IP=""
 fi
 if [[ -n "$SERVER_IP" ]]; then
     SERVER_DISPLAY="${HOSTNAME_FULL} (${SERVER_IP})"

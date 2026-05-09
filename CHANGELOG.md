@@ -3,6 +3,19 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.3]
+
+### Changed
+- Server-IP detection in alert messages now prefers the local
+  primary-interface IP (from `ip route get 1.1.1.1`) over the
+  cached public IP. For servers behind NAT (home boxes, cloud
+  VMs without a public IP attached, k8s nodes …) the public IP
+  is the gateway's address — the same for every server behind
+  that NAT, so it can't tell them apart. The local interface
+  IP correctly identifies each individual server. The cached
+  public IP is now only used as a last-resort fallback when
+  the `ip` binary isn't available.
+
 ## [1.5.2]
 
 ### Changed
