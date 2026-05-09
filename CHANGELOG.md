@@ -9,14 +9,14 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 - Hostname resolution preferred `hostname -f` over `hostname`,
   but on cloud / NAT'd hosts `-f` does a DNS lookup that
   returns generic auto-generated names (e.g.
-  `server-ayozdc.localdomain`) instead of what the operator
+  `server-XXXXXX.localdomain`) instead of what the operator
   actually set via `hostnamectl set-hostname` / `/etc/hostname`.
-  Example from the wild:
+  Example:
   ```
   $ hostname        # what the operator set
-  erney.online
+  web-01.example.com
   $ hostname -f     # what DHCP / cloud-init resolved
-  server-ayozdc.localdomain
+  server-XXXXXX.localdomain
   ```
   Switched to plain `hostname` everywhere (System status section,
   Telegram alerts, daily recap) so the operator's actual chosen
