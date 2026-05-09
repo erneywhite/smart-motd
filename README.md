@@ -323,7 +323,11 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 Highlights:
 
-- **v1.1.x** — Network section split into independent public-IP / internal-interfaces toggles with multiselect of detected interfaces (and "All interfaces (auto)" that future-proofs against newly-added ones). Fixed a latent bash empty-array bug that was silently hiding internal interface IPs since v0.1.0.
+- **v1.5.0** — Telegram alert IP whitelist (CIDR-aware), `smart-motd watch [SEC]` for live re-render with alt-screen, and an opt-in once-a-day Telegram recap (logins / failed attempts / pending updates / reboot status / uptime).
+- **v1.4.x** — Telegram SSH-login alerts with PAM-hook + bilingual messages (en/ru) + test-send in the wizard. Bash tab completion. Setup wizard preserves existing config / credentials on re-runs (no more Enter-mashing wipe).
+- **v1.3.x** — Per-interface rx/tx byte rate (5-min averaged) in the Network section, with column alignment. Installer hardened for Docker / chroot environments and for hosts with a non-coreutils `install` binary in `$PATH`.
+- **v1.2.0** — OS line in System status (`Ubuntu 22.04.3 LTS` / `Debian GNU/Linux 12` / …). Wizard chrome switched to ASCII so it works on minimal-font terminals.
+- **v1.1.x** — Network section split into independent public-IP / internal-interfaces toggles with multiselect of detected interfaces. Fixed a latent bash empty-array bug that was silently hiding internal interface IPs since v0.1.0.
 - **v1.0.x** — First stable release. CI passes (`shellcheck` + `bash -n` + e2e smoke test). Installer now disables EVERY script in `/etc/update-motd.d/` (not just six hard-coded names), so newer Ubuntu defaults like `landscape-sysinfo` and `esm-announce` no longer leak under the banner.
 - **v0.5.0** — `smart-motd doctor` diagnostic command. New sections: VPN (WireGuard / OpenVPN), Time sync (NTP), Storage arrays (mdadm / ZFS).
 - **v0.4.x** — Paged wizard with viewport scrolling, 20 themes, 13 color palettes, RU translations, `smart-motd upgrade`, Ctrl+C exits cleanly.
