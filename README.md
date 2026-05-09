@@ -7,7 +7,7 @@ Cross-distro (Debian / Ubuntu / RHEL / CentOS / Rocky / Alma / Fedora / Arch / o
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.3.3-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.4.0-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE%20%7C%20Alpine-blue)
 
 ## Preview
@@ -76,6 +76,7 @@ W e l c o m e   t o   y o u r   s e r v e r
 - **13 color palettes** — `default`, `ocean`, `forest`, `sunset`, `amber`, `mono`, `matrix`, `neon`, `coral`, `mint`, `sky`, `gold`, `snow`.
 - **Heavy data is cached** — every slow query (apt/dnf updates, public IP, SSL expiry, `du` on big dirs, `smartctl`, journalctl SSH-fail counts, docker/podman/kubernetes lists, weather) refreshes in a 5-minute systemd timer. The on-login path just sources cache files — login stays under ~50 ms even on busy hosts with thousands of failed-SSH log entries.
 - **`pam_motd` integration** — on Debian/Ubuntu the cache job also regenerates `/run/motd.dynamic`, so config changes show up at the very next login (instead of waiting for pam_motd's own refresh schedule to skip a few logins).
+- **Optional Telegram SSH-login alerts** — get a notification with user / IP / rDNS / hostname / timestamp on every login. Bot token stored root-only; English or Russian message language; PAM-hooked, runs in the background so login is never delayed.
 - **Cross-distro install** — the installer detects your distro family and wires into the right hook automatically (`/etc/update-motd.d/` for Debian-family, systemd timer → `/etc/motd` for RHEL/openSUSE/Arch, cron fallback for Alpine).
 
 ## Install
@@ -143,6 +144,7 @@ Each section is independent and can be turned on/off in the config (or via the w
 | **Directories** | Custom labeled paths with sizes | E.g. backups, big project dirs |
 | **Recent logins** | Last N successful logins | |
 | **Weather** | One-line wttr.in summary | Off by default; auto-detects your city via IP |
+| **Telegram SSH alerts** | (not visible in MOTD) Sends a Telegram message on every SSH login | Off by default; PAM-hooked; bot token in root-only `/etc/smart-motd/secrets.conf`; EN/RU message language |
 
 Sections marked `auto` only render if the relevant tool/file exists on the host. Nothing breaks if `docker`, `kubectl`, `smartctl`, etc. aren't installed — the wizard's first page also no longer pre-checks these on hosts where the underlying tool isn't present.
 
@@ -208,6 +210,37 @@ The font lives on your **client**, not the server — installing fonts via `apk`
 **Exception — VNC / RDP / xrdp**: when you connect to a remote desktop session and open a terminal inside it, the terminal program is running on the **server**, so the fonts that matter are *server-side* in that case. Install Nerd Fonts on the server (`apt install fonts-jetbrains-mono`, `zypper install nerd-fonts-jetbrains-mono-fonts`, etc.) and re-launch the session. Same applies to logging into the local TTY console directly (`tty1`–`tty6`) — fonts come from `console-setup` / `kbd`.
 
 Or just stick to the ASCII-friendly themes that work everywhere: `classic`, `slim`, `double`, `ascii`, `pipes`, `retro`, `compact`.
+
+## Telegram SSH login alerts
+
+`smart-motd` can fire a Telegram notification on every successful SSH login:
+
+```
+🔓 SSH login
+👤 User: root
+🌐 IP: 152.53.135.96
+🌐 rDNS: toristarm.online
+🖥 Server: node1
+🕐 2026-05-08 22:12:46 MSK
+```
+
+**Setup**: tick "Telegram SSH login alerts" in the wizard's first multiselect, then on the configuration page paste:
+- **Bot token** — create one via [@BotFather](https://t.me/BotFather) (`/newbot`, copy the API token).
+- **Chat ID** — get yours by sending `/start` to [@userinfobot](https://t.me/userinfobot). Personal chats are positive numbers; groups/channels are negative (e.g. `-1001234567890`).
+- **Thread ID** (optional) — if your group has Topics enabled and you want alerts in a specific topic.
+- **Alert language** — `en` or `ru`, independent from the wizard language (you can configure setup in English while messages go in Russian, or vice versa).
+- **Test send** — the wizard offers to send a test message before saving the config, so you verify the credentials work end-to-end.
+
+**Mechanism**: a single `session optional pam_exec.so /usr/local/lib/smart-motd/bin/motd-ssh-alert` line is appended to `/etc/pam.d/sshd` at install time. Backup of the original goes to `/etc/pam.d/sshd.smart-motd.bak`. The handler script does an rDNS lookup with a 3 s timeout and fires the Telegram POST in a detached background subshell — login is **not** delayed by the network call.
+
+**Security**:
+- Bot token + chat ID + thread ID live in `/etc/smart-motd/secrets.conf` with mode `0600` (root-only) — `config.conf` stays world-readable without leaking credentials.
+- The PAM hook is `optional`, so even if `pam_exec` somehow fails, your SSH session still proceeds.
+- `smart-motd uninstall` removes the PAM line and the secrets file cleanly.
+
+**Caveats**:
+- Editing `/etc/pam.d/sshd` is invasive — back up your config separately if you have a custom PAM stack. The installer keeps a `.smart-motd.bak` of the file before its first edit.
+- The hook fires on every successful authentication including `sftp`/`scp` if your sshd allows them. To filter on shell logins only you'd need additional checks inside `motd-ssh-alert`.
 
 ## How caching works
 

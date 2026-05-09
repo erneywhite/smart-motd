@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# smart-motd: SSH-login alert sender. Triggered by pam_exec on every
+# successful sshd session open. Reads /etc/smart-motd/{config,secrets}.conf,
+# composes a message in the configured language, fires it off to Telegram
+# in the background, and exits 0 immediately so login is not delayed.
+#
+# Environment from pam_exec:
+#   PAM_USER      — the authenticated username
+#   PAM_RHOST     — the client IP (or hostname)
+#   PAM_TYPE      — open_session / close_session / auth …
+#   PAM_SERVICE   — should be "sshd" for ssh logins
+
+set -u
+
+SMART_MOTD_PREFIX="${SMART_MOTD_PREFIX:-/usr/local/lib/smart-motd}"
+SMART_MOTD_CONFIG="${SMART_MOTD_CONFIG:-/etc/smart-motd/config.conf}"
+SMART_MOTD_SECRETS="${SMART_MOTD_SECRETS:-/etc/smart-motd/secrets.conf}"
+
+# Only fire on session open events from sshd. Skip everything else
+# (close_session, password change, sudo, su, …).
+[[ "${PAM_TYPE:-}" == "open_session" ]] || exit 0
+[[ "${PAM_SERVICE:-sshd}" == "sshd" ]] || exit 0
+
+TELEGRAM_ALERTS_ENABLED=false
+TELEGRAM_ALERTS_LANG=en
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""
+TELEGRAM_THREAD_ID=""
+
+# shellcheck disable=SC1090
+[[ -r "$SMART_MOTD_CONFIG" ]]  && . "$SMART_MOTD_CONFIG"
+# shellcheck disable=SC1090
+[[ -r "$SMART_MOTD_SECRETS" ]] && . "$SMART_MOTD_SECRETS"
+
+[[ "$TELEGRAM_ALERTS_ENABLED" == "true" ]] || exit 0
+[[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]] || exit 0
+command -v curl >/dev/null 2>&1 || exit 0
+
+USER_NAME="${PAM_USER:-unknown}"
+RHOST="${PAM_RHOST:-unknown}"
+HOSTNAME_SHORT="$(hostname -s 2>/dev/null || hostname)"
+
+# Best-effort reverse DNS with a short timeout — never block login on slow DNS.
+RDNS=""
+if [[ "$RHOST" =~ ^[0-9a-fA-F.:]+$ ]]; then
+    if command -v dig >/dev/null 2>&1; then
+        RDNS=$(timeout 3 dig +short -x "$RHOST" 2>/dev/null | head -1 | sed 's/\.$//')
+    elif command -v host >/dev/null 2>&1; then
+        RDNS=$(timeout 3 host "$RHOST" 2>/dev/null | awk '/domain name pointer/ {print $NF; exit}' | sed 's/\.$//')
+    elif command -v getent >/dev/null 2>&1; then
+        RDNS=$(timeout 3 getent hosts "$RHOST" 2>/dev/null | awk '{print $2}')
+    fi
+fi
+
+if [[ "$TELEGRAM_ALERTS_LANG" == "ru" ]]; then
+    TS=$(date '+%d.%m.%Y %H:%M:%S %Z')
+    MSG="🔓 SSH вход на сервер
+👤 Пользователь: ${USER_NAME}
+🌐 IP: ${RHOST}"
+    [[ -n "$RDNS" ]] && MSG+="
+🌐 rDNS: ${RDNS}"
+    MSG+="
+🖥 Сервер: ${HOSTNAME_SHORT}
+🕐 ${TS}"
+else
+    TS=$(date '+%Y-%m-%d %H:%M:%S %Z')
+    MSG="🔓 SSH login
+👤 User: ${USER_NAME}
+🌐 IP: ${RHOST}"
+    [[ -n "$RDNS" ]] && MSG+="
+🌐 rDNS: ${RDNS}"
+    MSG+="
+🖥 Server: ${HOSTNAME_SHORT}
+🕐 ${TS}"
+fi
+
+# Send in a detached subshell so login doesn't wait for the HTTPS round-trip.
+(
+    URL="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
+    args=(
+        --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}"
+        --data-urlencode "text=${MSG}"
+        --data-urlencode "disable_web_page_preview=true"
+    )
+    [[ -n "$TELEGRAM_THREAD_ID" ]] && args+=( --data-urlencode "message_thread_id=${TELEGRAM_THREAD_ID}" )
+    curl -fsS --max-time 8 "${args[@]}" "$URL" >/dev/null 2>&1
+) &
+disown 2>/dev/null || true
+
+exit 0

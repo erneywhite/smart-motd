@@ -3,6 +3,45 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0]
+
+### Added — Telegram SSH login alerts
+- New opt-in feature: send a Telegram notification on every
+  successful SSH login. Format matches the example from the
+  feature request:
+  ```
+  🔓 SSH login   (or "🔓 SSH вход на сервер" in Russian)
+  👤 User: root
+  🌐 IP: 152.53.135.96
+  🌐 rDNS: toristarm.online
+  🖥 Server: node1
+  🕐 2026-05-08 22:12:46 MSK
+  ```
+- Hooked into PAM via a single `session optional pam_exec.so …`
+  line appended to `/etc/pam.d/sshd` (with a `.smart-motd.bak`
+  backup taken before any edit). The handler script
+  `bin/motd-ssh-alert` reads its config, does an rDNS lookup with
+  a 3-second timeout, and fires the Telegram POST in a detached
+  background subshell — login is never delayed.
+- Wizard adds a checkbox to the section multiselect (placed
+  right before Weather) and a configuration page collecting the
+  bot token, chat ID, optional thread ID, and message language
+  (independent of wizard language — you can configure in English
+  but receive alerts in Russian, or vice versa). A "send a test
+  message now?" prompt before the config is saved verifies the
+  credentials work end-to-end.
+- Bot token and chat ID live in a separate
+  `/etc/smart-motd/secrets.conf` with mode 0600 (root-only).
+  `config.conf` stays world-readable without leaking credentials.
+- The PAM hook is always wired at install time (so users can
+  enable alerts later via `sudo smart-motd setup` without
+  re-touching pam.d). The handler script is a no-op when
+  `TELEGRAM_ALERTS_ENABLED=false`, so zero overhead for users
+  who don't enable the feature.
+- `smart-motd uninstall` strips the hook line back out of
+  `/etc/pam.d/sshd` and removes `secrets.conf` (credentials are
+  not left lying around).
+
 ## [1.3.3]
 
 ### Fixed
