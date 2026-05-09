@@ -86,6 +86,15 @@ if [[ -r "$SMART_MOTD_CONFIG" ]]; then
     # shellcheck disable=SC1090
     . "$SMART_MOTD_CONFIG"
 fi
+# Load secrets too (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_THREAD_ID)
+# so that on re-runs the wizard can show them as pre-filled defaults — without
+# this, hitting Enter on the Telegram pages would silently overwrite saved
+# credentials with empty strings.
+SMART_MOTD_SECRETS="${SMART_MOTD_CONFIG_DIR}/secrets.conf"
+if [[ -r "$SMART_MOTD_SECRETS" ]]; then
+    # shellcheck disable=SC1090
+    . "$SMART_MOTD_SECRETS"
+fi
 apply_theme
 apply_color_theme
 
@@ -264,6 +273,35 @@ smart-motd · by @erneywhite
 https://github.com/erneywhite/smart-motd")
 
 wizard_intro "$(_l "Welcome to smart-motd" "Добро пожаловать в smart-motd")" "$intro_body"
+
+# --- Top-level "edit existing config?" gate ---
+# When a config is already saved and the user re-runs setup (typically right
+# after `smart-motd upgrade` re-launches the wizard), default the answer to
+# "no" so they can hit Enter to keep everything unchanged. Walking through
+# every page just to mash Enter would be tedious and error-prone (the
+# Telegram bot-token field, in particular, is easy to wipe by accident).
+if $EXISTING_CONFIG; then
+    if ! wizard_yesno \
+        "$(_l "Edit existing configuration?" "Изменить существующий конфиг?")" \
+        "$(_l \
+"A config is already saved at ${SMART_MOTD_CONFIG}.
+
+Pick 'No' to keep it unchanged and exit (recommended after a routine 'smart-motd upgrade' when nothing needs tweaking).
+
+Pick 'Yes' to walk through every wizard page. Existing values are pre-filled — hit Enter to keep each one. The Telegram-credentials page additionally asks before re-prompting for the bot token." \
+"Уже сохранён конфиг по пути ${SMART_MOTD_CONFIG}.
+
+Выберите 'Нет' чтобы оставить его как есть и выйти (это рекомендуется после обычного 'smart-motd upgrade' если ничего не нужно менять).
+
+Выберите 'Да' чтобы пройти все страницы визарда. Существующие значения подставятся — Enter чтобы оставить. Страница с Telegram-кредами дополнительно спросит, перенабирать ли токен.")" \
+        n; then
+        _wiz_clear
+        printf '\n  \e[1;32m✓\e[0m %s\n  %s%s%s\n\n' \
+            "$(_l "Configuration kept" "Конфиг сохранён без изменений")" \
+            "${C_DIM}" "$SMART_MOTD_CONFIG" "${C_RESET}"
+        exit 0
+    fi
+fi
 
 # --- Section selector (multiselect) ---
 
@@ -831,26 +869,51 @@ fi
 # --- Telegram SSH login alerts ---
 
 configure_telegram_alerts_page() {
-    TELEGRAM_BOT_TOKEN=$(wizard_text \
-        "$(_l "Telegram bot token" "Токен Telegram-бота")" \
-        "$(_l \
+    # Gate the credential prompts behind a yes/no when creds already exist.
+    # Default is "no" so a re-run of the wizard doesn't accidentally wipe
+    # the bot token by mashing Enter through pre-filled fields.
+    local edit_creds=true
+    if [[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]]; then
+        if ! wizard_yesno \
+            "$(_l "Edit Telegram credentials?" "Изменить Telegram-креды?")" \
+            "$(_l \
+"Bot token + chat ID are already saved (from a previous setup run).
+
+Pick 'No' to keep them as-is and skip ahead to the language picker / test send (recommended if you just want to verify alerts still work or change the message language).
+
+Pick 'Yes' to be re-prompted for bot token, chat ID and thread ID. Existing values will be pre-filled — hit Enter on each to keep, or type a new value to overwrite." \
+"Токен бота и chat ID уже сохранены (с прошлого запуска визарда).
+
+Выберите 'Нет' чтобы оставить их как есть и перейти к выбору языка / тестовой отправке (рекомендуется если просто хотите убедиться что алерты работают, или сменить язык сообщений).
+
+Выберите 'Да' чтобы перенабрать токен, chat ID и thread ID. Существующие значения подставятся — Enter чтобы оставить, или введите новое чтобы перезаписать.")" \
+            n; then
+            edit_creds=false
+        fi
+    fi
+
+    if $edit_creds; then
+        TELEGRAM_BOT_TOKEN=$(wizard_text \
+            "$(_l "Telegram bot token" "Токен Telegram-бота")" \
+            "$(_l \
 "Create a bot via @BotFather, paste the API token here. Looks like '1234567:abc...'. Stored in /etc/smart-motd/secrets.conf with mode 0600 (root-only)." \
 "Создайте бота через @BotFather и вставьте API-токен сюда. Выглядит как '1234567:abc...'. Хранится в /etc/smart-motd/secrets.conf с правами 0600 (только root).")" \
-        "$TELEGRAM_BOT_TOKEN")
+            "$TELEGRAM_BOT_TOKEN")
 
-    TELEGRAM_CHAT_ID=$(wizard_text \
-        "$(_l "Telegram chat ID" "Telegram chat ID")" \
-        "$(_l \
+        TELEGRAM_CHAT_ID=$(wizard_text \
+            "$(_l "Telegram chat ID" "Telegram chat ID")" \
+            "$(_l \
 "Numeric chat ID where alerts go. Personal chats are positive, groups/channels are negative (e.g. -1001234567890). Get yours by sending /start to @userinfobot." \
 "Числовой ID чата для алертов. Личные чаты — положительные, группы/каналы — отрицательные (например -1001234567890). Узнать можно отправив /start боту @userinfobot.")" \
-        "$TELEGRAM_CHAT_ID")
+            "$TELEGRAM_CHAT_ID")
 
-    TELEGRAM_THREAD_ID=$(wizard_text \
-        "$(_l "Telegram thread ID (optional)" "Telegram thread ID (опционально)")" \
-        "$(_l \
+        TELEGRAM_THREAD_ID=$(wizard_text \
+            "$(_l "Telegram thread ID (optional)" "Telegram thread ID (опционально)")" \
+            "$(_l \
 "If your group has topics enabled, paste the thread ID here so alerts go to a specific topic. Leave blank to post to the main thread." \
 "Если в группе включены темы, укажите ID треда — алерты пойдут в конкретную тему. Пусто = в основной чат.")" \
-        "$TELEGRAM_THREAD_ID")
+            "$TELEGRAM_THREAD_ID")
+    fi
 
     # Alert language picker (separate from wizard language).
     local lang_default=0

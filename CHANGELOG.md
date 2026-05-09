@@ -3,6 +3,31 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.2]
+
+### Fixed
+- Setup wizard didn't load `/etc/smart-motd/secrets.conf` on
+  re-runs, so the Telegram bot-token / chat-ID fields rendered
+  empty even when credentials were already saved. Hitting Enter
+  through them then silently overwrote the saved values with
+  empty strings, breaking alerts. Now secrets are loaded along
+  with config.conf at the top of the wizard, so existing values
+  pre-fill correctly via `read -e -i`.
+
+### Added — fewer Enter-mashings on re-runs
+- **Top-level skip gate**: when an existing config is detected
+  (i.e. you're re-running setup, typically after `smart-motd
+  upgrade` re-launches the wizard), the wizard now asks "Edit
+  existing configuration?" right after the language picker.
+  Default is **No** — Enter exits cleanly without any changes.
+  Pick Yes to walk through every page as before.
+- **Telegram credentials gate**: inside the Telegram config
+  page, when bot token + chat ID are already saved, the wizard
+  asks "Edit Telegram credentials?" first. Default **No** skips
+  the token / chat / thread prompts and jumps straight to the
+  language picker + test send (so you can verify alerts still
+  work, or change message language, without retyping creds).
+
 ## [1.4.1]
 
 ### Added
