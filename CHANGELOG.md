@@ -3,6 +3,24 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.1]
+
+### Changed
+- Telegram credentials wizard now starts with a "Where should
+  the alerts go?" picker — Personal chat (DM) or Group / channel.
+  The follow-up prompt is contextual:
+    · Personal — asks for the operator's user ID with a reminder
+      that they must `/start` the bot first (otherwise the bot
+      can't initiate DMs).
+    · Group / channel — asks for the negative chat ID with bot-
+      adding instructions, plus the optional thread ID for groups
+      with Topics enabled.
+  The thread-ID question is suppressed entirely for personal
+  chats (they don't have threads). On re-runs the picker
+  defaults to whatever type the saved chat ID implies (negative
+  → group, positive → personal), so hitting Enter keeps the
+  current setup.
+
 ## [1.5.0]
 
 ### Added

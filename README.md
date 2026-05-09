@@ -7,7 +7,7 @@ Cross-distro (Debian / Ubuntu / RHEL / CentOS / Rocky / Alma / Fedora / Arch / o
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.5.0-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.5.1-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE%20%7C%20Alpine-blue)
 
 ## Preview
@@ -225,11 +225,14 @@ Or just stick to the ASCII-friendly themes that work everywhere: `classic`, `sli
 🕐 2026-05-08 22:12:46 MSK
 ```
 
-**Setup**: tick "Telegram SSH login alerts" in the wizard's first multiselect, then on the configuration page paste:
+**Setup**: tick "Telegram SSH login alerts" in the wizard's first multiselect, then on the configuration page:
 - **Bot token** — create one via [@BotFather](https://t.me/BotFather) (`/newbot`, copy the API token).
-- **Chat ID** — get yours by sending `/start` to [@userinfobot](https://t.me/userinfobot). Personal chats are positive numbers; groups/channels are negative (e.g. `-1001234567890`).
-- **Thread ID** (optional) — if your group has Topics enabled and you want alerts in a specific topic.
-- **Alert language** — `en` or `ru`, independent from the wizard language (you can configure setup in English while messages go in Russian, or vice versa).
+- **Destination type** — pick "Personal chat (DM)" if you want the bot to message you directly, or "Group / channel" if it should post to a shared chat. The follow-up question changes accordingly.
+- **Chat / user ID** — get yours by sending `/start` to [@userinfobot](https://t.me/userinfobot). Your own user ID is positive; group / channel IDs are negative (e.g. `-1001234567890`). For personal chats: open the bot in Telegram and press `/start` once first — bots can't initiate DMs.
+- **Thread ID** (groups only, optional) — if your group has Topics enabled and you want alerts in a specific topic.
+- **Alert language** — `en` or `ru`, independent from the wizard language.
+- **IP whitelist** — list of IPs / CIDR blocks that DON'T trigger an alert (e.g. your own home/office/VPN ranges). Optional.
+- **Daily recap** — opt-in once-a-day summary message (logins / failed attempts / pending updates / reboot status / uptime).
 - **Test send** — the wizard offers to send a test message before saving the config, so you verify the credentials work end-to-end.
 
 **Mechanism**: a single `session optional pam_exec.so /usr/local/lib/smart-motd/bin/motd-ssh-alert` line is appended to `/etc/pam.d/sshd` at install time. Backup of the original goes to `/etc/pam.d/sshd.smart-motd.bak`. The handler script does an rDNS lookup with a 3 s timeout and fires the Telegram POST in a detached background subshell — login is **not** delayed by the network call.

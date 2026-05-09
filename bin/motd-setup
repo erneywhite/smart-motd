@@ -903,19 +903,49 @@ Pick 'Yes' to be re-prompted for bot token, chat ID and thread ID. Existing valu
 "Создайте бота через @BotFather и вставьте API-токен сюда. Выглядит как '1234567:abc...'. Хранится в /etc/smart-motd/secrets.conf с правами 0600 (только root).")" \
             "$TELEGRAM_BOT_TOKEN")
 
-        TELEGRAM_CHAT_ID=$(wizard_text \
-            "$(_l "Telegram chat ID" "Telegram chat ID")" \
+        # Destination type — derived from current TELEGRAM_CHAT_ID's sign
+        # (negative = group/channel, positive/blank = personal). On re-run
+        # the cursor lands on the existing choice.
+        local dest_default=0 dest_choice
+        [[ "$TELEGRAM_CHAT_ID" == -* ]] && dest_default=1
+        dest_choice=$(wizard_select \
+            "$(_l "Where should the alerts go?" "Куда отправлять алерты?")" \
             "$(_l \
-"Numeric chat ID where alerts go. Personal chats are positive, groups/channels are negative (e.g. -1001234567890). Get yours by sending /start to @userinfobot." \
-"Числовой ID чата для алертов. Личные чаты — положительные, группы/каналы — отрицательные (например -1001234567890). Узнать можно отправив /start боту @userinfobot.")" \
-            "$TELEGRAM_CHAT_ID")
+"Personal chat = bot DMs you directly (you must /start the bot first). Group/channel = bot posts to a shared chat (bot must be added there as a member)." \
+"Личный чат = бот пишет лично вам в ЛС (нужно сначала отправить ему /start). Группа/канал = бот публикует в общем чате (бота нужно туда добавить).")" \
+            "$dest_default" -- \
+            "$(_l "Personal chat (DM)" "Личный чат (ЛС)")" \
+            "$(_l "Group / channel" "Группа / канал")")
 
-        TELEGRAM_THREAD_ID=$(wizard_text \
-            "$(_l "Telegram thread ID (optional)" "Telegram thread ID (опционально)")" \
-            "$(_l \
-"If your group has topics enabled, paste the thread ID here so alerts go to a specific topic. Leave blank to post to the main thread." \
-"Если в группе включены темы, укажите ID треда — алерты пойдут в конкретную тему. Пусто = в основной чат.")" \
-            "$TELEGRAM_THREAD_ID")
+        local is_group=false
+        case "$dest_choice" in
+            *Group*|*Группа*) is_group=true ;;
+        esac
+
+        if $is_group; then
+            TELEGRAM_CHAT_ID=$(wizard_text \
+                "$(_l "Group / channel ID" "ID группы / канала")" \
+                "$(_l \
+"Negative numeric ID of the group or channel where alerts will be posted. Looks like '-1001234567890' for super-groups/channels, or '-123456789' for plain groups. Make sure the bot is added to the group as a member (channels need it as admin to post). To find the ID: add @userinfobot to the group, send /start, it replies with the group's ID." \
+"Отрицательный числовой ID группы или канала, куда полетят алерты. Выглядит как '-1001234567890' для супергрупп/каналов или '-123456789' для обычных групп. Бот должен быть добавлен в группу как участник (для каналов — админом, чтобы постить). Узнать ID: добавьте @userinfobot в группу, отправьте /start, он напишет ID.")" \
+                "$TELEGRAM_CHAT_ID")
+
+            TELEGRAM_THREAD_ID=$(wizard_text \
+                "$(_l "Thread ID (optional, only for groups with topics)" "Thread ID (опционально, только для групп с темами)")" \
+                "$(_l \
+"If your group has Topics enabled, paste the thread ID to send alerts to a specific topic. Leave blank to post to the main thread / 'General'." \
+"Если в группе включены темы — впишите ID треда, чтобы алерты шли в конкретную тему. Пусто = в основной чат / 'General'.")" \
+                "$TELEGRAM_THREAD_ID")
+        else
+            TELEGRAM_CHAT_ID=$(wizard_text \
+                "$(_l "Your personal Telegram user ID" "Ваш личный Telegram user ID")" \
+                "$(_l \
+"Positive numeric ID of YOUR Telegram account. The bot DMs you at this ID. IMPORTANT: open the bot in Telegram and press /start at least once — bots can't initiate DMs to users who haven't started the conversation. To find your ID: send /start to @userinfobot, it replies with your numeric user ID." \
+"Положительный числовой ID ВАШЕГО Telegram-аккаунта. Бот будет писать вам в ЛС по этому ID. ВАЖНО: откройте бота в Telegram и хотя бы раз нажмите /start — бот не может начать переписку с пользователем, который сам ему не написал. Узнать свой ID: отправьте /start боту @userinfobot, он вернёт ваш ID.")" \
+                "$TELEGRAM_CHAT_ID")
+            # Personal chats don't have threads — clear any stale value.
+            TELEGRAM_THREAD_ID=""
+        fi
     fi
 
     # Alert language picker (separate from wizard language).
