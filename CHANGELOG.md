@@ -3,6 +3,77 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.12.0]
+
+**Re-setup:** optional.
+
+### Added — reboot-required indicator
+- The **Package updates** block now also flags when a kernel
+  or library update has applied and the box needs a reboot to
+  pick up the new code:
+  ```
+  »»»»»»»»»» Package updates ««««««««««
+   Updates    ▸ 0 (system up to date)
+   Reboot     ▸ required (kernel/library update applied)
+   Checked    ▸ 2m ago
+  ```
+- Detection is cross-distro:
+  - Debian / Ubuntu — `/var/run/reboot-required` marker.
+  - openSUSE — `/var/run/reboot-needed` marker and
+    `zypper needs-rebooting` (exit 102).
+  - RHEL / Fedora / Rocky / Alma — `dnf needs-restarting -r`
+    (exit 1 = reboot required).
+- The daily Telegram recap already had a Debian-only check;
+  it now reads the same cross-distro cache and reports reboot
+  status correctly on every distro family.
+
+### Added — auto-detect SSL certs from nginx / apache configs
+- New cache scanner greps `/etc/nginx/`, `/usr/local/nginx/conf/`,
+  `/etc/apache2/`, `/etc/httpd/` for `ssl_certificate` /
+  `SSLCertificateFile` directives. Each parseable PEM/CRT
+  file becomes a candidate.
+- Useful for hosts running a control panel (ISPmanager,
+  aaPanel, FastPanel, HestiaCP, Plesk, cPanel, …) whose certs
+  live outside `/etc/letsencrypt/live/`. Previously you had
+  to enumerate them by hand in `SSL_DOMAINS`.
+- The wizard's SSL page now shows a multi-select over every
+  detected cert, with the primary CN as the human label —
+  tick the ones you want monitored. Selections are stored in
+  a new `SSL_CERT_PATHS` array and rendered alongside the
+  existing Let's Encrypt auto-discovery and manual
+  `SSL_DOMAINS`.
+- Detection runs once per cache cycle (5 min) — zero
+  overhead on the on-login render path. Re-run `motd-setup`
+  to pick up new vhosts.
+
+### Added — auto-show failed systemd units
+- Optional `SERVICES_SHOW_FAILED=true` (off by default). When
+  on, the Services section additionally lists every unit in
+  the `failed` state, even if it wasn't on the explicit
+  `SERVICES_LIST`. Catches crashes of background units you
+  didn't know existed.
+- Wizard adds a yes/no toggle on the services page right
+  after the multi-select.
+
+### Added — `smart-motd benchmark`
+- New diagnostic subcommand. Runs each enabled section three
+  times (configurable: `smart-motd benchmark 10`) and prints
+  a sorted-descending table of average wall-clock milliseconds:
+  ```
+  smart-motd benchmark — 3 iterations per section
+
+    Section                Avg (ms)
+    -------                --------
+    ssl                       412
+    network                    87
+    system                     45
+    …
+  ```
+- Sections > 500 ms render red, 100-500 ms yellow, faster
+  green. If something shows up red, it's a hint to either
+  disable the section or raise the cache interval — the goal
+  is to keep the on-login MOTD snappy.
+
 ## [1.11.0]
 
 **Re-setup:** optional.

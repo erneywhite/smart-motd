@@ -9,7 +9,7 @@ _smart_motd() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     if [[ "$COMP_CWORD" -eq 1 ]]; then
-        local opts="show watch setup update-cache edit config test-alert status doctor version upgrade uninstall help"
+        local opts="show watch setup update-cache edit config test-alert status doctor version upgrade benchmark uninstall help"
         # shellcheck disable=SC2207
         COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
         return 0

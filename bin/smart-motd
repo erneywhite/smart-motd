@@ -25,6 +25,7 @@ Commands:
   doctor             Diagnose the install (check hooks, timers, freshness).
   version            Show installed version (and check for updates).
   upgrade            Re-run the installer to upgrade to the latest release.
+  benchmark          Time each MOTD section to find slow ones.
   uninstall          Remove smart-motd from this system.
   help               Show this help.
 
@@ -298,6 +299,14 @@ EOF
                 exit 1
                 ;;
         esac
+        ;;
+    benchmark)
+        iters="${2:-3}"
+        if ! [[ "$iters" =~ ^[0-9]+$ ]] || (( iters < 1 )); then
+            echo "smart-motd benchmark: iterations must be a positive integer" >&2
+            exit 1
+        fi
+        exec "${SMART_MOTD_PREFIX}/bin/motd-benchmark" "$iters"
         ;;
     help|-h|--help) usage ;;
     *)            usage; exit 1 ;;

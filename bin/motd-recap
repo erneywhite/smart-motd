@@ -108,11 +108,11 @@ UPDATES_SECURITY=0
 UPDATES_COUNT="${UPDATES_COUNT:-0}"
 UPDATES_SECURITY="${UPDATES_SECURITY:-0}"
 
-# Reboot required?
+# Reboot required? Cross-distro detection lives in cache (packages_reboot_required).
 REBOOT_REQ="no"
-[[ -f /var/run/reboot-required ]] && REBOOT_REQ="yes"
-if command -v needs-restarting >/dev/null 2>&1; then
-    needs-restarting -r >/dev/null 2>&1 || REBOOT_REQ="yes"
+if [[ -r "$SMART_MOTD_CACHE_DIR/packages_reboot_required" ]]; then
+    REBOOT_REQ=$(cat "$SMART_MOTD_CACHE_DIR/packages_reboot_required" 2>/dev/null)
+    REBOOT_REQ="${REBOOT_REQ:-no}"
 fi
 
 # Uptime in human form

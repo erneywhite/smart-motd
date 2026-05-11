@@ -68,6 +68,27 @@ cache_update_packages() {
 
     cache_write "packages_count" "$count"
     cache_write "packages_security" "$security"
+    cache_write "packages_reboot_required" "$(_reboot_required)"
+}
+
+# ---- reboot required (cross-distro) ----
+# Returns "yes" or "no". Detection order:
+#   1. /var/run/reboot-required (Debian/Ubuntu — created by unattended-upgrades / dpkg trigger)
+#   2. /var/run/reboot-needed   (openSUSE — created by zypper/purge-kernels)
+#   3. dnf needs-restarting -r  (RHEL/Fedora — exits 1 when reboot required)
+#   4. zypper needs-rebooting   (openSUSE — exits 102 when reboot required)
+_reboot_required() {
+    [[ -e /var/run/reboot-required || -e /run/reboot-required ]] && { echo "yes"; return; }
+    [[ -e /var/run/reboot-needed   || -e /run/reboot-needed   ]] && { echo "yes"; return; }
+    if have dnf; then
+        dnf -q needs-restarting -r >/dev/null 2>&1
+        [[ $? -eq 1 ]] && { echo "yes"; return; }
+    fi
+    if have zypper; then
+        zypper --quiet needs-rebooting >/dev/null 2>&1
+        [[ $? -eq 102 ]] && { echo "yes"; return; }
+    fi
+    echo "no"
 }
 
 # ---- public IP ----
@@ -80,6 +101,86 @@ cache_update_public_ip() {
         ip=$(wget -qO- --timeout=4 https://api.ipify.org 2>/dev/null || true)
     fi
     cache_write "public_ip" "${ip:-unavailable}"
+}
+
+# ---- ssl auto-detect helpers ----
+# Extract the certificate's primary domain label: CN if available, else
+# basename of containing directory (works for letsencrypt-style layouts).
+_cert_label() {
+    local pem="$1" cn
+    cn=$(openssl x509 -in "$pem" -noout -subject 2>/dev/null \
+        | sed -nE 's|.*CN[[:space:]]*=[[:space:]]*([^,/]+).*|\1|p' \
+        | head -1 | tr -d ' ')
+    if [[ -n "$cn" ]]; then
+        printf '%s\n' "$cn"
+    else
+        printf '%s\n' "$(basename "$(dirname "$pem")")"
+    fi
+}
+
+# Scan nginx and apache configs for ssl_certificate / SSLCertificateFile
+# directives. Returns one line per real, openssl-parseable cert:
+#   /abs/path|primary_cn|comma,joined,sans
+# Used by the cache writer (for header/badge) and by motd-setup (for the
+# auto-detect multi-select on the SSL wizard page).
+_detect_webserver_certs() {
+    have openssl || return 0
+    local paths=()
+    local dir
+
+    if have grep; then
+        for dir in /etc/nginx /usr/local/nginx/conf /usr/local/etc/nginx; do
+            [[ -d "$dir" ]] || continue
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                paths+=("$line")
+            done < <(grep -rhE '^[[:space:]]*ssl_certificate([[:space:]]|=)' "$dir" 2>/dev/null \
+                | sed -E 's/^[[:space:]]*ssl_certificate[[:space:]]+//;
+                          s/[;[:space:]]*$//;
+                          s/^["'\'']//; s/["'\'']$//' \
+                | grep -v '^[[:space:]]*ssl_certificate_key' \
+                | awk 'NF==1 {print}')
+        done
+
+        for dir in /etc/apache2 /etc/httpd /etc/apache; do
+            [[ -d "$dir" ]] || continue
+            while IFS= read -r line; do
+                [[ -z "$line" ]] && continue
+                paths+=("$line")
+            done < <(grep -rhE '^[[:space:]]*SSLCertificateFile[[:space:]]+' "$dir" 2>/dev/null \
+                | awk '{print $2}' | tr -d '"'"'")
+        done
+    fi
+
+    # Dedupe, validate, and emit `path|cn|sans`.
+    local seen=" " path cn sans subj
+    local p
+    for p in "${paths[@]}"; do
+        # Strip ssl_certificate_key matches that may have slipped past the awk filter.
+        [[ "$p" == *_key* ]] && continue
+        # Filter snake-oil / Mozilla snippets / obvious placeholders.
+        case "$p" in
+            */snakeoil.pem|*ssl-cert-snakeoil*) continue ;;
+            *example.com*|*localhost*|*default*) ;;  # allowed, but still validated
+        esac
+        # Absolute paths only.
+        [[ "$p" = /* ]] || continue
+        # Already seen?
+        [[ "$seen" == *" $p "* ]] && continue
+        seen+="$p "
+        # Must be a readable, parseable cert.
+        [[ -r "$p" ]] || continue
+        if ! openssl x509 -in "$p" -noout 2>/dev/null; then
+            continue
+        fi
+        cn=$(openssl x509 -in "$p" -noout -subject 2>/dev/null \
+            | sed -nE 's|.*CN[[:space:]]*=[[:space:]]*([^,/]+).*|\1|p' \
+            | head -1 | tr -d ' ')
+        sans=$(openssl x509 -in "$p" -noout -ext subjectAltName 2>/dev/null \
+            | grep -oE 'DNS:[^,[:space:]]+' \
+            | sed 's/^DNS://' | sort -u | paste -sd, -)
+        printf '%s|%s|%s\n' "$p" "${cn:-unknown}" "${sans:-}"
+    done
 }
 
 # ---- ssl certs ----
@@ -142,8 +243,17 @@ cache_update_ssl() {
 
     if ! have openssl; then
         cache_write "ssl" ""
+        cache_write "ssl_detected" ""
         return
     fi
+
+    # ---- discover certs from web-server configs (nginx, apache) ----
+    # Populates the ssl_detected cache regardless of whether the operator
+    # has opted in to monitoring them — the wizard uses this list to offer
+    # a multi-select. Each line: 'path|cn|sans' (sans is comma-joined).
+    local detected=""
+    detected=$(_detect_webserver_certs)
+    cache_write "ssl_detected" "$detected"
 
     if [[ "${SSL_AUTODISCOVER_LETSENCRYPT:-true}" == "true" && -d /etc/letsencrypt/live ]]; then
         local d
@@ -157,6 +267,17 @@ cache_update_ssl() {
             lines+="$(_check_pem "$pem" "$name")"$'\n'
         done
     fi
+
+    # Operator-picked paths from the wizard (auto-detect selector). Each is
+    # an absolute path to a PEM/CRT readable by root.
+    local cert
+    for cert in "${SSL_CERT_PATHS[@]:-}"; do
+        [[ -z "$cert" ]] && continue
+        [[ -r "$cert" ]] || continue
+        local label
+        label=$(_cert_label "$cert")
+        lines+="$(_check_pem "$cert" "$label")"$'\n'
+    done
 
     local item
     for item in "${SSL_DOMAINS[@]:-}"; do

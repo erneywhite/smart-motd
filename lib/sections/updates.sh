@@ -2,9 +2,10 @@
 # Updates available: read from cache (populated by motd-cache-update).
 
 section_updates() {
-    local count security age
+    local count security age reboot
     count=$(cache_read "packages_count" "")
     security=$(cache_read "packages_security" "")
+    reboot=$(cache_read "packages_reboot_required" "no")
     age=$(cache_age "packages_count")
 
     # Don't show the section if cache is empty AND we have no count yet
@@ -30,6 +31,10 @@ section_updates() {
             color="${C_YELLOW}"
             kv "Updates" "$count available" "$color"
         fi
+    fi
+
+    if [[ "$reboot" == "yes" ]]; then
+        kv "Reboot" "required (kernel/library update applied)" "${C_RED}"
     fi
 
     # Hint: how stale the data is

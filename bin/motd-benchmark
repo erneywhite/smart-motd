@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+# smart-motd: per-section timing benchmark. Runs each enabled section
+# function N times (default 3), reports average wall-clock milliseconds.
+# Output of the sections themselves is discarded — only the timing report
+# is printed.
+
+set -u
+
+SMART_MOTD_PREFIX="${SMART_MOTD_PREFIX:-/usr/local/lib/smart-motd}"
+SMART_MOTD_CONFIG="${SMART_MOTD_CONFIG:-/etc/smart-motd/config.conf}"
+ITERS="${1:-3}"
+
+# Same defaults as motd-generate so 'set -u' doesn't fire on unset vars.
+HEADER_TEXT="Welcome"; HEADER_SPACED=true
+WELCOME_TITLE=""; WELCOME_LINES=()
+WARNING_LINES=(); SYSTEM_DISK_PATHS=("/")
+SERVICES_LIST=(); SERVICES_SHOW_FAILED=false
+NETWORK_SHOW_PUBLIC_IP=true; NETWORK_SHOW_INTERFACES=true
+NETWORK_SHOW_RATES=true; NETWORK_INTERFACES=()
+SSL_AUTODISCOVER_LETSENCRYPT=true; SSL_DOMAINS=(); SSL_CERT_PATHS=()
+SSL_WARN_DAYS=14; SMART_DISKS=(); DIRECTORIES_LIST=()
+LASTLOGIN_COUNT=3; WEATHER_CITY=""; FOOTER_TEXT=""
+COLORS_ENABLED=true; THEME=classic; COLOR_THEME=default
+
+HEADER_ENABLED=true; WELCOME_ENABLED=true; WARNING_ENABLED=true
+SYSTEM_ENABLED=true; MAINTENANCE_ENABLED=true; UPDATES_ENABLED=true
+SERVICES_ENABLED=true; NETWORK_ENABLED=true; SSL_ENABLED=true
+SECURITY_ENABLED=true; TEMPERATURE_ENABLED=auto; SMART_ENABLED=auto
+DOCKER_ENABLED=auto; PODMAN_ENABLED=auto; KUBERNETES_ENABLED=auto
+DIRECTORIES_ENABLED=false; LASTLOGIN_ENABLED=true; WEATHER_ENABLED=false
+NTP_ENABLED=auto; RAID_ENABLED=auto; VPN_ENABLED=auto
+UPGRADE_NOTICE_ENABLED=true; FOOTER_ENABLED=true
+
+SECTION_ORDER=(
+    header welcome warning system maintenance updates ntp
+    services network ssl security temperature smart raid
+    docker podman kubernetes vpn directories lastlogin weather
+    footer upgrade_notice
+)
+
+# shellcheck disable=SC1090
+[[ -r "$SMART_MOTD_CONFIG" ]] && . "$SMART_MOTD_CONFIG"
+UPGRADE_NOTICE_ENABLED=true
+
+# shellcheck source=../lib/common.sh
+. "${SMART_MOTD_PREFIX}/lib/common.sh"
+apply_theme; apply_color_theme; detect_distro
+
+for f in "${SMART_MOTD_PREFIX}"/lib/sections/*.sh; do
+    # shellcheck disable=SC1090
+    . "$f"
+done
+
+# Millisecond wall clock. GNU date is available on all targeted distros.
+_now_ms() {
+    local n
+    n=$(date +%s%N 2>/dev/null)
+    [[ -n "$n" && "$n" != *N ]] && { echo $(( n / 1000000 )); return; }
+    # macOS / BSD fallback: %s%3N is also non-portable, but we don't ship
+    # there. Last resort: second resolution.
+    echo $(( $(date +%s) * 1000 ))
+}
+
+results=()
+total_start=$(_now_ms)
+for sec in "${SECTION_ORDER[@]}"; do
+    section_enabled "${sec^^}" || continue
+    fn="section_${sec}"
+    declare -F "$fn" >/dev/null || continue
+    sum=0
+    for ((i=0; i<ITERS; i++)); do
+        s=$(_now_ms)
+        "$fn" >/dev/null 2>&1 || true
+        e=$(_now_ms)
+        sum=$(( sum + (e - s) ))
+    done
+    avg=$(( sum / ITERS ))
+    results+=("${avg}|${sec}")
+done
+total_end=$(_now_ms)
+
+printf 'smart-motd benchmark — %d iterations per section\n\n' "$ITERS"
+printf '  %-20s %10s\n' "Section" "Avg (ms)"
+printf '  %-20s %10s\n' "-------" "--------"
+
+red=$'\e[31m'; yellow=$'\e[33m'; green=$'\e[32m'; reset=$'\e[0m'
+printf '%s\n' "${results[@]}" | sort -t'|' -k1,1nr | while IFS='|' read -r ms sec; do
+    if   (( ms > 500 )); then color="$red"
+    elif (( ms > 100 )); then color="$yellow"
+    else                       color="$green"
+    fi
+    printf '  %-20s %s%10s%s\n' "$sec" "$color" "$ms" "$reset"
+done
+
+printf '\n  Wall-clock total (1 iteration, all sections): %d ms\n' \
+    "$(( (total_end - total_start) / ITERS ))"
+printf '\n  Slow sections (> 500 ms) usually mean a section is hitting the\n'
+printf '  network or filesystem live instead of reading from cache. Disable\n'
+printf '  via /etc/smart-motd/config.conf or raise the cache interval.\n'

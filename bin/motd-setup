@@ -40,7 +40,9 @@ NETWORK_SHOW_PUBLIC_IP=true
 NETWORK_INTERFACES=()
 SSL_AUTODISCOVER_LETSENCRYPT=true
 SSL_DOMAINS=()
+SSL_CERT_PATHS=()
 SSL_WARN_DAYS=14
+SERVICES_SHOW_FAILED=false
 SMART_DISKS=()
 DIRECTORIES_LIST=()
 LASTLOGIN_COUNT=3
@@ -672,7 +674,21 @@ configure_services_page() {
         (( dup )) || SERVICES_LIST+=("$c")
     done
 
-    [[ ${#SERVICES_LIST[@]} -eq 0 ]] && SERVICES_ENABLED=false
+    if wizard_yesno \
+        "$(_l "Auto-show failed systemd units?" "Автопоказ упавших systemd-юнитов?")" \
+        "$(_l \
+"Also surface any systemd unit in the 'failed' state, even if it's not in the explicit list above. Useful to catch services you didn't know existed crashing." \
+"Дополнительно показывать любые systemd-юниты в состоянии 'failed', даже если их нет в списке выше. Помогает заметить падение сервисов, о которых не знал.")" \
+        "$([[ "$SERVICES_SHOW_FAILED" == "true" ]] && echo y || echo n)"; then
+        SERVICES_SHOW_FAILED=true
+    else
+        SERVICES_SHOW_FAILED=false
+    fi
+
+    # If list is empty AND failed-auto is off → disable the whole section.
+    if [[ ${#SERVICES_LIST[@]} -eq 0 ]] && [[ "$SERVICES_SHOW_FAILED" != "true" ]]; then
+        SERVICES_ENABLED=false
+    fi
 }
 
 if [[ "$SERVICES_ENABLED" == "true" ]]; then
@@ -691,6 +707,50 @@ if [[ "$SSL_ENABLED" == "true" ]]; then
         SSL_AUTODISCOVER_LETSENCRYPT=true
     else
         SSL_AUTODISCOVER_LETSENCRYPT=false
+    fi
+
+    # Auto-detect certs referenced by nginx/apache configs. Useful for hosts
+    # using control panels (ISPmanager, aaPanel, FastPanel, Plesk, etc.)
+    # which keep certs outside /etc/letsencrypt. The operator then picks
+    # which ones to actually monitor via a multi-select.
+    # Run in a subshell so cache.sh's side-effects (color reinit, mkdir)
+    # don't bleed into the wizard's terminal state.
+    detected_raw=$(
+        SMART_MOTD_FORCE_COLOR=0 bash -c '
+            SMART_MOTD_PREFIX="'"$SMART_MOTD_PREFIX"'"
+            . "$SMART_MOTD_PREFIX/lib/cache.sh" >/dev/null 2>&1
+            _detect_webserver_certs 2>/dev/null
+        '
+    )
+    if [[ -n "$detected_raw" ]]; then
+        ms_opts=()
+        while IFS='|' read -r d_path d_cn d_sans; do
+            [[ -z "$d_path" ]] && continue
+            already=0
+            for existing in "${SSL_CERT_PATHS[@]:-}"; do
+                [[ "$existing" == "$d_path" ]] && { already=1; break; }
+            done
+            label="${d_cn} — ${d_path}"
+            if [[ "$already" == "1" ]]; then
+                ms_opts+=("1${label}")
+            else
+                ms_opts+=("0${label}")
+            fi
+        done <<<"$detected_raw"
+
+        mapfile -t picked < <(wizard_multiselect \
+            "$(_l "Detected SSL certificates" "Найденные SSL-сертификаты")" \
+            "$(_l \
+"Certificates referenced by nginx / apache configs. Tick the ones you want smart-motd to monitor for expiry. (Let's Encrypt certs above are handled separately.)" \
+"Сертификаты, на которые ссылаются конфиги nginx / apache. Отметь те, которые smart-motd должен мониторить на истечение. (Сертификаты Let's Encrypt отслеживаются отдельно выше.)")" \
+            "${ms_opts[@]}")
+        SSL_CERT_PATHS=()
+        for sel in "${picked[@]:-}"; do
+            [[ -z "$sel" ]] && continue
+            # Label format: "CN — /abs/path" — split on " — " and take the path.
+            sel_path="${sel#* — }"
+            SSL_CERT_PATHS+=("$sel_path")
+        done
     fi
 
     mapfile -t SSL_DOMAINS < <(wizard_list \
@@ -1184,6 +1244,7 @@ TS=$(date '+%Y-%m-%d %H:%M:%S')
     echo
     echo "# ---- Services ----"
     write_array SERVICES_LIST "${SERVICES_LIST[@]}"
+    echo "SERVICES_SHOW_FAILED=$SERVICES_SHOW_FAILED"
     echo
     echo "# ---- Network ----"
     echo "NETWORK_SHOW_PUBLIC_IP=$NETWORK_SHOW_PUBLIC_IP"
@@ -1194,6 +1255,7 @@ TS=$(date '+%Y-%m-%d %H:%M:%S')
     echo "# ---- SSL ----"
     echo "SSL_AUTODISCOVER_LETSENCRYPT=$SSL_AUTODISCOVER_LETSENCRYPT"
     write_array SSL_DOMAINS "${SSL_DOMAINS[@]}"
+    write_array SSL_CERT_PATHS "${SSL_CERT_PATHS[@]:-}"
     echo "SSL_WARN_DAYS=$SSL_WARN_DAYS"
     echo
     echo "# ---- Containers ----"
