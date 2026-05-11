@@ -3,6 +3,44 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.12.1]
+
+**Re-setup:** optional.
+
+### Changed — unified SSL cert auto-detect
+- The wizard's "Auto-discover Let's Encrypt certs? Y/N" page is gone.
+  It was redundant: the v1.12.0 multi-select already had to ask
+  about every cert, so the LE-only yes/no on top of it was double
+  work. Now there's a single page — pick whatever you want
+  monitored from one consolidated list.
+- The detector now scans more places, so panel-managed certs
+  actually show up:
+  - **Let's Encrypt** — `/etc/letsencrypt/live`,
+    `/etc/letsencrypt/archive`.
+  - **aaPanel** — `/www/server/panel/vhost/cert` and nginx
+    configs under `/www/server/panel/vhost/nginx/` (the v1.12.0
+    grep was rooted at `/etc/nginx/` only, which is why aaPanel
+    found nothing).
+  - **ISPmanager** — `/var/www/httpd-cert`,
+    `/usr/local/mgr5/etc`.
+  - **FastPanel** — `/etc/ssl/certs/fastpanel2`,
+    `/var/www/<user>/data/ssl`.
+  - **HestiaCP / VestaCP** — `/home/<user>/conf/web/<domain>/ssl`.
+  - **Plesk** — `/usr/local/psa/var/certificates`.
+  - **cPanel** — `/var/cpanel/ssl/installed/certs`.
+  - **nginx / apache configs** anywhere else, including
+    `/usr/local/nginx/conf/`, `/usr/local/etc/nginx/`.
+- Detection prefers `fullchain.pem` over `cert.pem` when both
+  exist in the same directory (matches the LE convention more
+  modern tools use).
+- **Backwards compatible.** If you upgrade and don't re-run
+  `motd-setup`, your existing `SSL_AUTODISCOVER_LETSENCRYPT=true`
+  config keeps working — `cache_update_ssl` honors it as a
+  fallback whenever `SSL_CERT_PATHS` is still empty. When you do
+  re-run setup, detected Let's Encrypt certs are pre-ticked on
+  the migration path so Enter-walking the page doesn't lose
+  monitoring.
+
 ## [1.12.0]
 
 **Re-setup:** optional.

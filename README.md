@@ -7,7 +7,7 @@ Cross-distro (Debian / Ubuntu / RHEL / CentOS / Rocky / Alma / Fedora / Arch / o
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.12.0-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.12.1-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE%20%7C%20Alpine-blue)
 
 ## Preview
@@ -334,7 +334,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 Highlights:
 
-- **v1.12.0** — Reboot-required indicator in the Package updates block (cross-distro: Debian/Ubuntu file marker, openSUSE marker + `zypper needs-rebooting`, RHEL/Fedora `dnf needs-restarting -r`). SSL auto-detect grep's nginx / apache configs so panels (ISPmanager, aaPanel, FastPanel, HestiaCP, Plesk, …) work out of the box — the wizard offers a multi-select over every detected cert. Opt-in `SERVICES_SHOW_FAILED=true` surfaces any unit in the failed state, even if it's not on your explicit list. New `smart-motd benchmark` diagnostic times every section so you can spot slow ones.
+- **v1.12.x** — Reboot-required indicator in the Package updates block (cross-distro: Debian/Ubuntu file marker, openSUSE marker + `zypper needs-rebooting`, RHEL/Fedora `dnf needs-restarting -r`). Unified SSL cert auto-detect — scans Let's Encrypt, control-panel paths (aaPanel, ISPmanager, FastPanel, HestiaCP, Plesk, cPanel) **and** any `ssl_certificate` / `SSLCertificateFile` directive in nginx / apache configs; wizard offers one consolidated multi-select. Opt-in `SERVICES_SHOW_FAILED=true` surfaces any unit in the failed state, even if it's not on your explicit list. New `smart-motd benchmark` diagnostic times every section so you can spot slow ones.
 - **v1.11.0** — Multiple Telegram destinations: one alert can now go to N (bot, chat, thread) tuples at once. Useful for managed-services contexts where the same login alert needs to land in your own chat *and* a client's chat.
 - **v1.10.0** — Backup-age annotation in Monitored directories. Flag an entry as `|backup` and the MOTD shows the age of the newest file inside, color-coded by staleness (`newest: 2h ago` = green, ≥2d yellow, ≥7d or empty red).
 - **v1.9.x** — Two new CLI commands: `sudo smart-motd test-alert [ssh|recap]` fires a Telegram alert immediately for verification, and `smart-motd config get/set KEY [VALUE]` for surgical edits without re-running the wizard. Also fixed a `cp`-vs-running-script race during upgrade.

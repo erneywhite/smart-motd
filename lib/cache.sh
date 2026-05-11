@@ -118,22 +118,80 @@ _cert_label() {
     fi
 }
 
-# Scan nginx and apache configs for ssl_certificate / SSLCertificateFile
-# directives. Returns one line per real, openssl-parseable cert:
+# Unified cert auto-detection. Three sources:
+#   1. Well-known cert storage directories — works for hosts running a
+#      control panel that keeps its nginx configs *outside* /etc/nginx
+#      (e.g. aaPanel stores both configs and certs under /www/server/).
+#   2. nginx configs (ssl_certificate directive).
+#   3. apache configs (SSLCertificateFile directive).
+# Returns one line per real, openssl-parseable cert:
 #   /abs/path|primary_cn|comma,joined,sans
-# Used by the cache writer (for header/badge) and by motd-setup (for the
-# auto-detect multi-select on the SSL wizard page).
-_detect_webserver_certs() {
+# Used by motd-setup (for the auto-detect multi-select on the SSL wizard
+# page) and by cache_update_ssl indirectly via the operator's selection.
+_detect_all_certs() {
     have openssl || return 0
     local paths=()
-    local dir
+    local dir candidate
 
+    # ---- (1) well-known cert directories ----
+    # Use a recursive search with -maxdepth so we catch <user>/<domain>/cert
+    # layouts without descending into entire user homes. Each entry is a
+    # parent dir; find walks it looking for *.pem / *.crt / *.cer files.
+    local cert_roots=(
+        "/etc/letsencrypt/live"             # Certbot (standard)
+        "/etc/letsencrypt/archive"          # Certbot (alt)
+        "/www/server/panel/vhost/cert"      # aaPanel
+        "/www/wwwroot"                      # aaPanel (alt — user dirs may hold certs)
+        "/var/www/httpd-cert"               # ISPmanager
+        "/usr/local/mgr5/etc"               # ISPmanager (alt)
+        "/etc/ssl/certs/fastpanel2"         # FastPanel v2
+        "/usr/local/psa/var/certificates"   # Plesk
+        "/var/cpanel/ssl/installed/certs"   # cPanel
+    )
+    for dir in "${cert_roots[@]}"; do
+        [[ -d "$dir" ]] || continue
+        while IFS= read -r candidate; do
+            [[ -n "$candidate" ]] && paths+=("$candidate")
+        done < <(find "$dir" -maxdepth 4 -type f \
+                    \( -name '*.pem' -o -name '*.crt' -o -name '*.cer' \) \
+                    2>/dev/null)
+    done
+
+    # HestiaCP / VestaCP — per-user nested layout (/home/<u>/conf/web/<d>/ssl/).
+    if [[ -d /home ]]; then
+        local u
+        for u in /home/*/conf/web; do
+            [[ -d "$u" ]] || continue
+            while IFS= read -r candidate; do
+                [[ -n "$candidate" ]] && paths+=("$candidate")
+            done < <(find "$u" -maxdepth 3 -type f \
+                        \( -name '*.pem' -o -name '*.crt' -o -name '*.cer' \) \
+                        2>/dev/null)
+        done
+    fi
+
+    # FastPanel per-user (/var/www/<user>/data/ssl/).
+    if [[ -d /var/www ]]; then
+        local u
+        for u in /var/www/*/data/ssl; do
+            [[ -d "$u" ]] || continue
+            while IFS= read -r candidate; do
+                [[ -n "$candidate" ]] && paths+=("$candidate")
+            done < <(find "$u" -maxdepth 2 -type f \
+                        \( -name '*.pem' -o -name '*.crt' -o -name '*.cer' \) \
+                        2>/dev/null)
+        done
+    fi
+
+    # ---- (2) nginx configs ----
+    # Include aaPanel's vhost dir which isn't /etc/nginx.
     if have grep; then
-        for dir in /etc/nginx /usr/local/nginx/conf /usr/local/etc/nginx; do
+        for dir in /etc/nginx /usr/local/nginx/conf /usr/local/etc/nginx \
+                   /www/server/panel/vhost/nginx /www/server/nginx/conf; do
             [[ -d "$dir" ]] || continue
-            while IFS= read -r line; do
-                [[ -z "$line" ]] && continue
-                paths+=("$line")
+            while IFS= read -r candidate; do
+                [[ -z "$candidate" ]] && continue
+                paths+=("$candidate")
             done < <(grep -rhE '^[[:space:]]*ssl_certificate([[:space:]]|=)' "$dir" 2>/dev/null \
                 | sed -E 's/^[[:space:]]*ssl_certificate[[:space:]]+//;
                           s/[;[:space:]]*$//;
@@ -142,29 +200,34 @@ _detect_webserver_certs() {
                 | awk 'NF==1 {print}')
         done
 
+        # ---- (3) apache configs ----
         for dir in /etc/apache2 /etc/httpd /etc/apache; do
             [[ -d "$dir" ]] || continue
-            while IFS= read -r line; do
-                [[ -z "$line" ]] && continue
-                paths+=("$line")
+            while IFS= read -r candidate; do
+                [[ -z "$candidate" ]] && continue
+                paths+=("$candidate")
             done < <(grep -rhE '^[[:space:]]*SSLCertificateFile[[:space:]]+' "$dir" 2>/dev/null \
                 | awk '{print $2}' | tr -d '"'"'")
         done
     fi
 
-    # Dedupe, validate, and emit `path|cn|sans`.
-    local seen=" " path cn sans subj
-    local p
+    # ---- dedupe, validate, emit `path|cn|sans` ----
+    local seen=" " p cn sans
     for p in "${paths[@]}"; do
-        # Strip ssl_certificate_key matches that may have slipped past the awk filter.
+        # Skip private keys, chains, fullchain duplicates handled by canonicalisation below.
         [[ "$p" == *_key* ]] && continue
-        # Filter snake-oil / Mozilla snippets / obvious placeholders.
+        [[ "$p" == */privkey.pem ]] && continue
+        # Filter known placeholder / snake-oil certs.
         case "$p" in
             */snakeoil.pem|*ssl-cert-snakeoil*) continue ;;
-            *example.com*|*localhost*|*default*) ;;  # allowed, but still validated
         esac
         # Absolute paths only.
         [[ "$p" = /* ]] || continue
+        # Prefer fullchain over individual cert when both exist in the same dir.
+        if [[ "$(basename "$p")" == "cert.pem" ]]; then
+            local sibling="$(dirname "$p")/fullchain.pem"
+            [[ -r "$sibling" ]] && continue
+        fi
         # Already seen?
         [[ "$seen" == *" $p "* ]] && continue
         seen+="$p "
@@ -182,6 +245,11 @@ _detect_webserver_certs() {
         printf '%s|%s|%s\n' "$p" "${cn:-unknown}" "${sans:-}"
     done
 }
+
+# Back-compat alias: old name used by code that may still be cached on the
+# motd-setup side during in-place upgrades. Will be removed in a major
+# release; for now it just delegates.
+_detect_webserver_certs() { _detect_all_certs "$@"; }
 
 # ---- ssl certs ----
 # Output one line per cert: "domain|days_left|status"
@@ -247,37 +315,45 @@ cache_update_ssl() {
         return
     fi
 
-    # ---- discover certs from web-server configs (nginx, apache) ----
-    # Populates the ssl_detected cache regardless of whether the operator
-    # has opted in to monitoring them — the wizard uses this list to offer
-    # a multi-select. Each line: 'path|cn|sans' (sans is comma-joined).
+    # ---- discover certs (filesystem + nginx/apache configs) ----
+    # Populates ssl_detected for the wizard's multi-select. Each line:
+    # 'path|cn|sans' (sans is comma-joined).
     local detected=""
-    detected=$(_detect_webserver_certs)
+    detected=$(_detect_all_certs)
     cache_write "ssl_detected" "$detected"
 
-    if [[ "${SSL_AUTODISCOVER_LETSENCRYPT:-true}" == "true" && -d /etc/letsencrypt/live ]]; then
+    # Operator-picked paths from the wizard (auto-detect selector). When
+    # set, this is the authoritative list and overrides the legacy
+    # SSL_AUTODISCOVER_LETSENCRYPT fallback below.
+    local cert have_picked=0
+    for cert in "${SSL_CERT_PATHS[@]:-}"; do
+        [[ -z "$cert" ]] && continue
+        have_picked=1
+        [[ -r "$cert" ]] || continue
+        local label
+        label=$(_cert_label "$cert")
+        lines+="$(_check_pem "$cert" "$label")"$'\n'
+    done
+
+    # Legacy fallback: pre-v1.12.1 configs only carried SSL_AUTODISCOVER_LETSENCRYPT.
+    # When SSL_CERT_PATHS is still empty (user hasn't re-run motd-setup
+    # since upgrading), keep monitoring /etc/letsencrypt/live/* as before
+    # so they don't silently lose visibility on expiry.
+    if (( have_picked == 0 )) \
+        && [[ "${SSL_AUTODISCOVER_LETSENCRYPT:-true}" == "true" ]] \
+        && [[ -d /etc/letsencrypt/live ]]; then
         local d
         for d in /etc/letsencrypt/live/*/; do
             [[ -d "$d" ]] || continue
             local name pem
             name=$(basename "$d")
             [[ "$name" == "README" ]] && continue
-            pem="${d}cert.pem"
+            pem="${d}fullchain.pem"
+            [[ -r "$pem" ]] || pem="${d}cert.pem"
             [[ -r "$pem" ]] || continue
             lines+="$(_check_pem "$pem" "$name")"$'\n'
         done
     fi
-
-    # Operator-picked paths from the wizard (auto-detect selector). Each is
-    # an absolute path to a PEM/CRT readable by root.
-    local cert
-    for cert in "${SSL_CERT_PATHS[@]:-}"; do
-        [[ -z "$cert" ]] && continue
-        [[ -r "$cert" ]] || continue
-        local label
-        label=$(_cert_label "$cert")
-        lines+="$(_check_pem "$cert" "$label")"$'\n'
-    done
 
     local item
     for item in "${SSL_DOMAINS[@]:-}"; do

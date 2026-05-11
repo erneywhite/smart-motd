@@ -698,30 +698,31 @@ fi
 # --- SSL ---
 
 if [[ "$SSL_ENABLED" == "true" ]]; then
-    if wizard_yesno \
-        "$(_l "Auto-discover Let's Encrypt certs?" "Авто-поиск Let's Encrypt сертификатов?")" \
-        "$(_l \
-"Look in /etc/letsencrypt/live/* and report expiry days for each cert found. Recommended if you use Certbot." \
-"Сканирует /etc/letsencrypt/live/* и показывает дни до истечения каждого найденного сертификата. Рекомендуется если используется Certbot.")" \
-        "$([[ "$SSL_AUTODISCOVER_LETSENCRYPT" == "true" ]] && echo y || echo n)"; then
-        SSL_AUTODISCOVER_LETSENCRYPT=true
-    else
-        SSL_AUTODISCOVER_LETSENCRYPT=false
-    fi
-
-    # Auto-detect certs referenced by nginx/apache configs. Useful for hosts
-    # using control panels (ISPmanager, aaPanel, FastPanel, Plesk, etc.)
-    # which keep certs outside /etc/letsencrypt. The operator then picks
-    # which ones to actually monitor via a multi-select.
+    # Unified auto-detect: scans Let's Encrypt, common control-panel paths
+    # (aaPanel / ISPmanager / FastPanel / HestiaCP / Plesk / cPanel), and
+    # nginx/apache configs. The operator picks which detected certs to
+    # actually monitor via the multi-select below.
     # Run in a subshell so cache.sh's side-effects (color reinit, mkdir)
     # don't bleed into the wizard's terminal state.
     detected_raw=$(
         SMART_MOTD_FORCE_COLOR=0 bash -c '
             SMART_MOTD_PREFIX="'"$SMART_MOTD_PREFIX"'"
             . "$SMART_MOTD_PREFIX/lib/cache.sh" >/dev/null 2>&1
-            _detect_webserver_certs 2>/dev/null
+            _detect_all_certs 2>/dev/null
         '
     )
+
+    # Pre-tick logic:
+    #   - Already in SSL_CERT_PATHS → keep ticked.
+    #   - Else, on fresh upgrade from pre-v1.12.1 where SSL_CERT_PATHS is
+    #     empty AND SSL_AUTODISCOVER_LETSENCRYPT was true → pre-tick any
+    #     detected Let's Encrypt cert so the user doesn't lose monitoring
+    #     by Enter-walking through the page.
+    fresh_le_migration=0
+    if [[ ${#SSL_CERT_PATHS[@]} -eq 0 ]] && [[ "${SSL_AUTODISCOVER_LETSENCRYPT:-true}" == "true" ]]; then
+        fresh_le_migration=1
+    fi
+
     if [[ -n "$detected_raw" ]]; then
         ms_opts=()
         while IFS='|' read -r d_path d_cn d_sans; do
@@ -730,6 +731,11 @@ if [[ "$SSL_ENABLED" == "true" ]]; then
             for existing in "${SSL_CERT_PATHS[@]:-}"; do
                 [[ "$existing" == "$d_path" ]] && { already=1; break; }
             done
+            # Auto-tick LE certs on the migration path.
+            if (( already == 0 )) && (( fresh_le_migration == 1 )) \
+                && [[ "$d_path" == /etc/letsencrypt/* ]]; then
+                already=1
+            fi
             label="${d_cn} — ${d_path}"
             if [[ "$already" == "1" ]]; then
                 ms_opts+=("1${label}")
@@ -741,8 +747,8 @@ if [[ "$SSL_ENABLED" == "true" ]]; then
         mapfile -t picked < <(wizard_multiselect \
             "$(_l "Detected SSL certificates" "Найденные SSL-сертификаты")" \
             "$(_l \
-"Certificates referenced by nginx / apache configs. Tick the ones you want smart-motd to monitor for expiry. (Let's Encrypt certs above are handled separately.)" \
-"Сертификаты, на которые ссылаются конфиги nginx / apache. Отметь те, которые smart-motd должен мониторить на истечение. (Сертификаты Let's Encrypt отслеживаются отдельно выше.)")" \
+"Tick the certs you want smart-motd to monitor for expiry. Sources scanned: Let's Encrypt (/etc/letsencrypt), control panels (aaPanel, ISPmanager, FastPanel, HestiaCP, Plesk, cPanel) and any 'ssl_certificate' / 'SSLCertificateFile' directives in nginx / apache configs." \
+"Отметьте сертификаты, которые smart-motd должен мониторить на истечение. Источники: Let's Encrypt (/etc/letsencrypt), панели (aaPanel, ISPmanager, FastPanel, HestiaCP, Plesk, cPanel) и директивы 'ssl_certificate' / 'SSLCertificateFile' в конфигах nginx / apache.")" \
             "${ms_opts[@]}")
         SSL_CERT_PATHS=()
         for sel in "${picked[@]:-}"; do
@@ -752,6 +758,11 @@ if [[ "$SSL_ENABLED" == "true" ]]; then
             SSL_CERT_PATHS+=("$sel_path")
         done
     fi
+
+    # Once the operator has picked from the unified selector, the legacy
+    # SSL_AUTODISCOVER_LETSENCRYPT toggle is moot — its only job was to
+    # cover the same ground. Clear it so the config stays clean.
+    SSL_AUTODISCOVER_LETSENCRYPT=false
 
     mapfile -t SSL_DOMAINS < <(wizard_list \
         "$(_l "Additional SSL targets" "Дополнительные SSL-цели")" \
