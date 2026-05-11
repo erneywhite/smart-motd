@@ -215,6 +215,11 @@ fi
 # ---------- install files ----------
 step "Installing runtime to ${PREFIX}"
 mkdir -p "$PREFIX/lib" "$PREFIX/bin" "$PREFIX/lib/sections" "$CONFIG_DIR" "$CACHE_DIR" "$BIN_DIR"
+# Capture the previous install's version BEFORE we overwrite VERSION below.
+# Empty when this is a fresh install (no prior smart-motd on the box).
+OLD_VERSION=""
+[[ -r "$PREFIX/VERSION" ]] && OLD_VERSION=$(cat "$PREFIX/VERSION" 2>/dev/null | tr -d ' \r\n')
+
 _inst 0755 "$WORK"/bin/motd-generate     "$PREFIX/bin/motd-generate"
 _inst 0755 "$WORK"/bin/motd-cache-update "$PREFIX/bin/motd-cache-update"
 _inst 0755 "$WORK"/bin/motd-setup        "$PREFIX/bin/motd-setup"
@@ -231,6 +236,8 @@ for f in "$WORK"/lib/sections/*.sh; do
 done
 [[ -f "$WORK/VERSION" ]] && _inst 0644 "$WORK/VERSION" "$PREFIX/VERSION"
 [[ -f "$WORK/config.example.conf" ]] && _inst 0644 "$WORK/config.example.conf" "$PREFIX/config.example.conf"
+# Ship CHANGELOG.md alongside the runtime so upgrades can quote it.
+[[ -f "$WORK/CHANGELOG.md" ]] && _inst 0644 "$WORK/CHANGELOG.md" "$PREFIX/CHANGELOG.md"
 ok "Installed binaries, libs, and section modules"
 
 # Bash tab completion. Prefer the modern bash-completion location, fall back
@@ -383,18 +390,69 @@ fi
 
 print_summary
 
-# ---------- run setup wizard ----------
+# Capture the just-installed version for upgrade-vs-fresh branching below.
+NEW_VERSION=""
+[[ -r "$PREFIX/VERSION" ]] && NEW_VERSION=$(cat "$PREFIX/VERSION" 2>/dev/null | tr -d ' \r\n')
 
-if $RUN_SETUP && [[ -r /dev/tty && -w /dev/tty ]]; then
-    printf '  %sPress Enter%s to launch the interactive setup, or %sCtrl+C%s to skip and configure later.\n' \
-        "${C_BOLD}" "${C_RESET}" "${C_BOLD}" "${C_RESET}"
-    printf '  '
-    # Wait for Enter (or Ctrl+C / EOF). If the user does Ctrl+C, the trap
-    # will clean up the workdir and the wizard simply isn't launched.
-    read -r _ </dev/tty || true
-    printf '\n'
-    "$PREFIX/bin/motd-setup" </dev/tty
+# Print the CHANGELOG section for a given version. Reads /usr/local/lib/
+# smart-motd/CHANGELOG.md (shipped alongside the runtime), extracts the
+# "## [VERSION]" block, and prints it indented. Silent if the changelog
+# is missing or the version isn't found there.
+show_changelog_for_version() {
+    local v="$1" file="$PREFIX/CHANGELOG.md"
+    [[ -r "$file" ]] || return
+    local body
+    body=$(awk -v want="$v" '
+        BEGIN { in_block = 0; printed = 0; pending = "" }
+        $0 ~ "^## \\[" want "\\]" { in_block = 1; next }
+        in_block && /^## \[/      { exit }
+        in_block {
+            if (printed == 0 && $0 ~ /^[[:space:]]*$/) next  # skip leading blanks
+            if ($0 ~ /^[[:space:]]*$/) {
+                pending = pending "\n"
+            } else {
+                if (pending != "") { printf "%s", pending; pending = "" }
+                print
+                printed = 1
+            }
+        }
+    ' "$file")
+    [[ -z "$body" ]] && return
+    printf '\n  %sWhat'\''s new in v%s%s\n' "${C_BOLD}" "$v" "${C_RESET}"
+    printf '  %s──────────────────────────────────────────────%s\n' "${C_DIM}" "${C_RESET}"
+    while IFS= read -r line; do
+        printf '  %s\n' "$line"
+    done <<<"$body"
+}
+
+# ---------- post-install: fresh vs upgrade ----------
+
+if [[ -z "$OLD_VERSION" ]]; then
+    # Fresh install — no prior VERSION on disk. Offer the wizard as
+    # before; first-time setup is genuinely useful.
+    if $RUN_SETUP && [[ -r /dev/tty && -w /dev/tty ]]; then
+        printf '  %sPress Enter%s to launch the interactive setup, or %sCtrl+C%s to skip and configure later.\n' \
+            "${C_BOLD}" "${C_RESET}" "${C_BOLD}" "${C_RESET}"
+        printf '  '
+        read -r _ </dev/tty || true
+        printf '\n'
+        "$PREFIX/bin/motd-setup" </dev/tty
+    else
+        printf '  %s!%s Non-interactive install: setup wizard skipped.\n' "${C_YELLOW}" "${C_RESET}"
+        printf '    Run it manually with: %ssudo smart-motd setup%s\n' "${C_BRIGHT_CYAN}" "${C_RESET}"
+    fi
+elif [[ "$OLD_VERSION" == "$NEW_VERSION" ]]; then
+    # Same version re-installed (e.g. someone re-ran the curl|bash on the
+    # latest tag they already had). No changelog to show; just confirm.
+    printf '  %sNo version change — re-installed v%s.%s\n\n' \
+        "${C_DIM}" "$NEW_VERSION" "${C_RESET}"
 else
-    printf '  %s!%s Non-interactive install: setup wizard skipped.\n' "${C_YELLOW}" "${C_RESET}"
-    printf '    Run it manually with: %ssudo smart-motd setup%s\n' "${C_BRIGHT_CYAN}" "${C_RESET}"
+    # Real upgrade — show what's new, but DON'T auto-launch the wizard.
+    # The previous behavior of jumping into the wizard after every upgrade
+    # was annoying when nothing actually needs reconfiguring.
+    printf '\n  %s✓ Upgraded smart-motd v%s → v%s%s\n' \
+        "${C_BRIGHT_GREEN}${C_BOLD}" "$OLD_VERSION" "$NEW_VERSION" "${C_RESET}"
+    show_changelog_for_version "$NEW_VERSION"
+    printf '\n  %sIf any new options need configuring, run:%s %ssudo smart-motd setup%s\n\n' \
+        "${C_DIM}" "${C_RESET}" "${C_BRIGHT_CYAN}" "${C_RESET}"
 fi

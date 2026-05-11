@@ -3,6 +3,32 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.8.0]
+
+### Changed — installer output on upgrade
+- `smart-motd upgrade` (and any re-install of a different
+  version) no longer auto-launches the setup wizard. Instead
+  the installer prints the CHANGELOG entry for the just-
+  installed version and hints how to launch the wizard on
+  demand if any new option needs configuring:
+  ```
+  ✓ Upgraded smart-motd v1.7.1 → v1.8.0
+
+  What's new in v1.8.0
+  ─────────────────────────────────────
+  ### Changed — installer output on upgrade
+  - ...
+
+  If any new options need configuring, run: sudo smart-motd setup
+  ```
+  Fresh installs (no prior `VERSION` on disk) still offer to
+  launch the wizard immediately, since first-time setup is
+  genuinely useful. Re-installing the *same* version just
+  prints "No version change — re-installed vX.Y.Z."
+- `CHANGELOG.md` now ships into `/usr/local/lib/smart-motd/`
+  alongside the runtime, so the installer can quote it on
+  upgrade without re-downloading.
+
 ## [1.7.1]
 
 ### Changed
