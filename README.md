@@ -238,8 +238,9 @@ Or just stick to the ASCII-friendly themes that work everywhere: `classic`, `sli
 - **Thread ID** (groups only, optional) — if your group has Topics enabled and you want alerts in a specific topic.
 - **Alert language** — `en` or `ru`, independent from the wizard language.
 - **IP whitelist** — list of IPs / CIDR blocks that DON'T trigger an alert (e.g. your own home/office/VPN ranges). Optional.
-- **Daily recap** — opt-in once-a-day summary message (logins / failed attempts / pending updates / reboot status / uptime).
-- **Test send** — the wizard offers to send a test message before saving the config, so you verify the credentials work end-to-end.
+- **Daily recap** — opt-in once-a-day summary message (logins / failed attempts / pending updates / reboot status / uptime + 24h-averaged load and memory + root disk usage).
+- **Additional destinations** — optional list of extra `token|chat|thread` tuples. Every alert is sent to the primary destination AND to each extra one in parallel. Useful for managed-services contexts (you + a client both get the same alert from different bots).
+- **Test send** — the wizard offers to send a test message before saving the config. You can also fire one any time via `sudo smart-motd test-alert [ssh|recap]`.
 
 **Mechanism**: a single `session optional pam_exec.so /usr/local/lib/smart-motd/bin/motd-ssh-alert` line is appended to `/etc/pam.d/sshd` at install time. Backup of the original goes to `/etc/pam.d/sshd.smart-motd.bak`. The handler script does an rDNS lookup with a 3 s timeout and fires the Telegram POST in a detached background subshell — login is **not** delayed by the network call.
 
@@ -332,6 +333,11 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 Highlights:
 
+- **v1.11.0** — Multiple Telegram destinations: one alert can now go to N (bot, chat, thread) tuples at once. Useful for managed-services contexts where the same login alert needs to land in your own chat *and* a client's chat.
+- **v1.10.0** — Backup-age annotation in Monitored directories. Flag an entry as `|backup` and the MOTD shows the age of the newest file inside, color-coded by staleness (`newest: 2h ago` = green, ≥2d yellow, ≥7d or empty red).
+- **v1.9.x** — Two new CLI commands: `sudo smart-motd test-alert [ssh|recap]` fires a Telegram alert immediately for verification, and `smart-motd config get/set KEY [VALUE]` for surgical edits without re-running the wizard. Also fixed a `cp`-vs-running-script race during upgrade.
+- **v1.8.x** — Upgrade flow no longer auto-launches the wizard. Instead it prints the CHANGELOG entry for the new version + a single Re-setup status line (`✓ No re-setup needed` / `↪ Optional` / `⚠ Recommended`) parsed from a `**Re-setup:**` marker in each release entry.
+- **v1.7.x** — Daily Telegram recap now includes average load + memory (24-hour rolling) and root disk usage. Cache job collects 5-min samples for the moving average.
 - **v1.6.x** — Passive upgrade notice at the bottom of the MOTD when a newer release is published on GitHub (system parameter, always on, hidden when up-to-date). Sanity-check + post-install cache reset so no false-positive right after `smart-motd upgrade`.
 - **v1.5.x** — Telegram alert IP whitelist (CIDR-aware), `smart-motd watch [SEC]` for live re-render with alt-screen, opt-in once-a-day Telegram recap (logins / failed attempts / pending updates / reboot status / uptime). Personal-chat-or-group destination picker. Server identity in alerts now uses kernel `hostname` + primary-interface IP — works correctly behind NAT and on cloud VMs where DNS-resolved FQDN returns auto-generated junk.
 - **v1.4.x** — Telegram SSH-login alerts with PAM-hook + bilingual messages (en/ru) + test-send in the wizard. Bash tab completion. Setup wizard preserves existing config / credentials on re-runs (no more Enter-mashing wipe).
