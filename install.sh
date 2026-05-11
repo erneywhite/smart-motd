@@ -83,15 +83,34 @@ _repeat() {
     printf '%s' "$out"
 }
 
-# Drop-in cp+chmod replacement for `_inst MODE SRC DST`. We can't rely
-# on `install` being GNU coreutils on every distro — some Arch / minimal
-# images ship a different `install` binary higher in PATH (helm, a Cobra-
-# based AUR helper, etc.) that takes "install [PACKAGE...]" instead. Doing
-# the file copy ourselves avoids any PATH ambiguity.
+# Drop-in cp+chmod replacement for `install -m MODE SRC DST`. We can't rely
+# on GNU coreutils' install being first in PATH — some images ship a
+# different `install` binary (e.g. helm, AUR helpers) that takes
+# "install [PACKAGE...]" instead.
+#
+# IMPORTANT: write to a temp file in the destination directory and then
+# rename it into place, rather than cp-ing onto the existing file. A plain
+# `cp -f DST` truncates and rewrites the SAME inode — fine for inert files,
+# but FATAL when DST is currently being read (e.g. /usr/local/bin/smart-motd
+# is the script that just kicked off this upgrade). Without atomic rename
+# the parent bash keeps reading from the byte offset where it left off,
+# picks up garbled NEW content where it expected OLD, and mis-executes the
+# rest of the file. `mv` swaps the inode atomically — the running
+# process's open file descriptor stays bound to the now-orphaned old inode,
+# which the kernel keeps alive until that FD closes. New code only takes
+# effect on the NEXT invocation, which is what we want.
 _inst() {
     local mode="$1" src="$2" dst="$3"
-    cp -f "$src" "$dst"
-    chmod "$mode" "$dst"
+    local dir tmp
+    dir=$(dirname "$dst")
+    # Stage the file inside the destination directory so `mv` is on the
+    # same filesystem (otherwise it would degrade to copy-then-unlink,
+    # which races just like cp does).
+    tmp=$(mktemp -p "$dir" ".smart-motd-inst.XXXXXX" 2>/dev/null) \
+        || tmp="${dst}.smart-motd-inst.$$"
+    cp -f "$src" "$tmp"
+    chmod "$mode" "$tmp"
+    mv -f "$tmp" "$dst"
 }
 
 # Banner with auto-computed inner width based on the longest content line.

@@ -3,6 +3,34 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.9.1]
+
+**Re-setup:** not required.
+
+### Fixed
+- `sudo smart-motd upgrade` could mis-execute random fragments
+  of the newly-installed CLI after the install completed —
+  symptoms included spurious `is: command not found`,
+  `syntax error near unexpected token ';;'`, and even
+  re-running the installer a second time.
+
+  Root cause was the classic "modify a running script" race:
+  the installer's `_inst` helper used `cp -f` which truncates
+  and overwrites the destination file's inode in place. The
+  outer bash process (the original `smart-motd` script that
+  kicked off the upgrade) had its read-cursor mid-file when
+  `_inst` rewrote `/usr/local/bin/smart-motd` underneath it,
+  so subsequent `read()`s returned bytes from NEW code at
+  offsets that used to hold OLD code — and bash interpreted
+  the garbled mix as commands.
+
+  Fixed by making `_inst` write to a temp file in the same
+  directory and `mv` it into place. `mv` atomically swaps
+  inodes; the running process keeps reading from the
+  now-orphaned old inode (which the kernel preserves until
+  the FD closes), and new code only takes effect on the
+  NEXT invocation — which is the correct behavior.
+
 ## [1.9.0]
 
 **Re-setup:** not required.
