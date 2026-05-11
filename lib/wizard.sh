@@ -149,6 +149,37 @@ _pln() {
     printf '%b\e[K\n' "$text" >/dev/tty
 }
 
+# Read a single keystroke as a full UTF-8 character. Without this every
+# wizard primitive used `read -rsn1` which only fetches ONE BYTE, so any
+# 2-byte Cyrillic character (e.g. `с` U+0441 typed on a Russian keyboard
+# layout — visually identical to Latin `c`) gets sliced in half and
+# matches no case branch, making action keys silently do nothing.
+#
+# Returns:
+#   - Empty string on Enter / EOF.
+#   - $'\e' for Escape (caller is responsible for reading the rest of
+#     any escape sequence — same contract as the old `read -rsn1`).
+#   - Otherwise: the full UTF-8 byte sequence of the character.
+_wiz_readkey() {
+    local b1 rest code
+    IFS= read -rsn1 b1 </dev/tty || return 1
+    [[ -z "$b1" ]] && { printf ''; return 0; }
+    # Determine UTF-8 byte-length from the leading byte.
+    code=$(LC_ALL=C printf '%d' "'$b1" 2>/dev/null)
+    if (( code >= 192 && code <= 223 )); then       # 2-byte UTF-8 (e.g. Cyrillic)
+        IFS= read -rsn1 rest </dev/tty
+        printf '%s' "${b1}${rest}"
+    elif (( code >= 224 && code <= 239 )); then     # 3-byte UTF-8
+        IFS= read -rsn2 rest </dev/tty
+        printf '%s' "${b1}${rest}"
+    elif (( code >= 240 && code <= 247 )); then     # 4-byte UTF-8
+        IFS= read -rsn3 rest </dev/tty
+        printf '%s' "${b1}${rest}"
+    else
+        printf '%s' "$b1"
+    fi
+}
+
 # Repeat a character N times.
 _repeat() {
     local ch="$1" n="$2"
@@ -339,7 +370,7 @@ wizard_yesno() {
         _wiz_footer "up/down or y/n · Enter to confirm"
 
         _wiz_clear_tail
-        IFS= read -rsn1 key </dev/tty || break
+        key=$(_wiz_readkey) || break
         case "$key" in
             $'\e')
                 IFS= read -rsn2 -t 0.05 seq </dev/tty 2>/dev/null || seq=""
@@ -349,10 +380,10 @@ wizard_yesno() {
                 esac
                 ;;
             "")  break ;;
-            y|Y) sel=0; break ;;
-            n|N) sel=1; break ;;
-            j|J) sel=1 ;;
-            k|K) sel=0 ;;
+            y|Y|н|Н) sel=0; break ;;
+            n|N|т|Т) sel=1; break ;;
+            j|J|о|О) sel=1 ;;
+            k|K|л|Л) sel=0 ;;
         esac
     done
     _wiz_show_cursor
@@ -412,7 +443,7 @@ wizard_select() {
         _wiz_footer "up/down navigate · 1-9 jump · Enter to confirm"
 
         _wiz_clear_tail
-        IFS= read -rsn1 key </dev/tty || break
+        key=$(_wiz_readkey) || break
         case "$key" in
             $'\e')
                 IFS= read -rsn2 -t 0.05 seq </dev/tty 2>/dev/null || seq=""
@@ -422,8 +453,8 @@ wizard_select() {
                 esac
                 ;;
             "")  break ;;
-            j|J) (( sel < n - 1 )) && sel=$((sel + 1)) ;;
-            k|K) (( sel > 0 )) && sel=$((sel - 1)) ;;
+            j|J|о|О) (( sel < n - 1 )) && sel=$((sel + 1)) ;;
+            k|K|л|Л) (( sel > 0 )) && sel=$((sel - 1)) ;;
             [1-9])
                 local idx=$((key - 1))
                 (( idx < n )) && sel=$idx
@@ -493,7 +524,7 @@ wizard_select_preview() {
         _wiz_footer "up/down navigate · Enter to confirm"
 
         _wiz_clear_tail
-        IFS= read -rsn1 key </dev/tty || break
+        key=$(_wiz_readkey) || break
         case "$key" in
             $'\e')
                 IFS= read -rsn2 -t 0.05 seq </dev/tty 2>/dev/null || seq=""
@@ -503,8 +534,8 @@ wizard_select_preview() {
                 esac
                 ;;
             "")  break ;;
-            j|J) (( sel < n - 1 )) && sel=$((sel + 1)) ;;
-            k|K) (( sel > 0 )) && sel=$((sel - 1)) ;;
+            j|J|о|О) (( sel < n - 1 )) && sel=$((sel + 1)) ;;
+            k|K|л|Л) (( sel > 0 )) && sel=$((sel - 1)) ;;
         esac
     done
     _wiz_show_cursor
@@ -575,7 +606,7 @@ wizard_multiselect() {
         _wiz_footer "up/down move · Space toggle · a all · n none · Enter confirm"
 
         _wiz_clear_tail
-        IFS= read -rsn1 key </dev/tty || break
+        key=$(_wiz_readkey) || break
         case "$key" in
             $'\e')
                 IFS= read -rsn2 -t 0.05 seq </dev/tty 2>/dev/null || seq=""
@@ -586,10 +617,10 @@ wizard_multiselect() {
                 ;;
             "")  break ;;
             " ") checked[sel]=$(( 1 - ${checked[sel]:-0} )) ;;
-            a|A) for i in "${!options[@]}"; do checked[i]=1; done ;;
-            n|N) for i in "${!options[@]}"; do checked[i]=0; done ;;
-            j|J) (( sel < n - 1 )) && sel=$((sel + 1)) ;;
-            k|K) (( sel > 0 )) && sel=$((sel - 1)) ;;
+            a|A|ф|Ф) for i in "${!options[@]}"; do checked[i]=1; done ;;
+            n|N|т|Т) for i in "${!options[@]}"; do checked[i]=0; done ;;
+            j|J|о|О) (( sel < n - 1 )) && sel=$((sel + 1)) ;;
+            k|K|л|Л) (( sel > 0 )) && sel=$((sel - 1)) ;;
         esac
     done
     _wiz_show_cursor
@@ -664,12 +695,12 @@ wizard_list() {
         fi
 
         _wiz_clear_tail
-        IFS= read -rsn1 key </dev/tty || break
+        key=$(_wiz_readkey) || break
 
-        # Clear-confirm gate: any key other than 'c'/'C' cancels.
+        # Clear-confirm gate: any key other than 'c' / 'C' / 'с' / 'С' cancels.
         if (( confirm_clear == 1 )); then
             case "$key" in
-                c|C) items=(); sel=0; viewport_top=0 ;;
+                c|C|с|С) items=(); sel=0; viewport_top=0 ;;
             esac
             confirm_clear=0
             continue
@@ -683,9 +714,9 @@ wizard_list() {
                     "[B"|"OB") (( sel < n - 1 )) && sel=$((sel + 1)) ;;
                 esac
                 ;;
-            j|J) (( sel < n - 1 )) && sel=$((sel + 1)) ;;
-            k|K) (( sel > 0 )) && sel=$((sel - 1)) ;;
-            a|A)
+            j|J|о|О) (( sel < n - 1 )) && sel=$((sel + 1)) ;;
+            k|K|л|Л) (( sel > 0 )) && sel=$((sel - 1)) ;;
+            a|A|ф|Ф)
                 _wiz_show_cursor
                 _p "\n  Add: "
                 local new
@@ -693,7 +724,7 @@ wizard_list() {
                 _wiz_hide_cursor
                 [[ -n "$new" ]] && { items+=("$new"); sel=$(( ${#items[@]} - 1 )); }
                 ;;
-            e|E)
+            e|E|у|У)
                 if (( n > 0 )); then
                     _wiz_show_cursor
                     _p "\n  Edit (Enter to keep current): "
@@ -708,7 +739,7 @@ wizard_list() {
                     [[ -n "$edited" ]] && items[sel]="$edited"
                 fi
                 ;;
-            d|D)
+            d|D|в|В)
                 if (( n > 0 )); then
                     unset 'items[sel]'
                     items=("${items[@]}")
@@ -716,7 +747,7 @@ wizard_list() {
                     (( sel >= n )) && sel=$(( n > 0 ? n - 1 : 0 ))
                 fi
                 ;;
-            c|C)
+            c|C|с|С)
                 (( n > 0 )) && confirm_clear=1
                 ;;
             "") break ;;

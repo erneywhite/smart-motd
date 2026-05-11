@@ -3,6 +3,28 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.12.3]
+
+**Re-setup:** not required.
+
+### Fixed — wizard ignored action keys typed on a Russian keyboard layout
+- Every wizard primitive (yes/no, select, multi-select, list) read
+  keys with `read -rsn1` — exactly **one byte**. A Cyrillic
+  character is two bytes in UTF-8, so when the operator had the
+  Russian layout active and pressed e.g. `c` (which produces
+  Cyrillic `с` — visually identical to Latin `c`), the wizard
+  saw only the first byte (`0xD1`), matched no case branch, and
+  silently did nothing. Same problem for `a` → `ф`, `d` → `в`,
+  `e` → `у`, `j` → `о`, `k` → `л`, `n` → `т`, `y` → `н`.
+- Added a `_wiz_readkey` helper that reads a full UTF-8 character
+  (1-4 bytes, based on the leading byte). All five key-handling
+  loops now use it.
+- Action-key case patterns accept both the Latin and the
+  Russian-JCUKEN equivalents — `a|A|ф|Ф`, `d|D|в|В`, `c|C|с|С`,
+  etc. Either layout now works without surprises.
+- Escape sequences (arrow keys, Esc itself) are unaffected — they
+  use ASCII bytes regardless of keyboard layout.
+
 ## [1.12.2]
 
 **Re-setup:** not required.
