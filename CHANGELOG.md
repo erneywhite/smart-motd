@@ -3,6 +3,25 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.0]
+
+### Added — daily Telegram recap is more useful
+- Recap now also includes:
+  - **Average load (24h)** — `📈 Avg load (24h): 0.42`
+  - **Average memory % (24h)** — `🧠 Avg memory (24h): 38%`
+  - **Disk usage** for every mountpoint in `SYSTEM_DISK_PATHS`,
+    same format as the System status section in the MOTD
+    (`💾 Disk /: 11G / 50G (22% used)`).
+- New cache helpers `cache_update_load_history` /
+  `cache_update_mem_history` append a `<epoch> <value>` sample
+  to `/var/cache/smart-motd/{load,mem}_samples` on every cache
+  tick (5 min by default, so ~288 samples per day) and prune
+  anything older than 24h in the same pass. Disk usage is just
+  read live at recap time via `df` — it's slow-moving, no
+  history needed.
+- Bilingual labels (en/ru) follow the existing
+  `TELEGRAM_ALERTS_LANG` setting.
+
 ## [1.6.2]
 
 ### Fixed

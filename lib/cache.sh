@@ -377,6 +377,47 @@ qstr() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 
 # cache_kv_load is defined in common.sh and re-used here.
 
+# ---- 24-hour rolling history of load average + memory % ----
+# Each cache run appends a single line ('<epoch> <value>') to the sample
+# files. Anything older than 24h is pruned in-place. Average over the
+# resulting samples gives the daily mean used by the Telegram recap.
+
+_history_append() {
+    local file="$1" value="$2" now cutoff tmp
+    now=$(date +%s)
+    cutoff=$((now - 86400))
+    tmp="${file}.tmp"
+    # Append + filter in one pass: read existing lines >= cutoff, then
+    # the new sample, into a temp file. mv -f makes the swap atomic.
+    {
+        [[ -r "$file" ]] && awk -v c="$cutoff" '$1 >= c' "$file"
+        printf '%d %s\n' "$now" "$value"
+    } > "$tmp" && mv -f "$tmp" "$file"
+}
+
+cache_update_load_history() {
+    [[ -r /proc/loadavg ]] || return
+    local load1
+    load1=$(awk '{print $1}' /proc/loadavg)
+    [[ -z "$load1" ]] && return
+    _history_append "$SMART_MOTD_CACHE_DIR/load_samples" "$load1"
+}
+
+cache_update_mem_history() {
+    [[ -r /proc/meminfo ]] || return
+    local pct
+    pct=$(awk '
+        /^MemTotal:/      { total = $2 }
+        /^MemAvailable:/  { avail = $2 }
+        END {
+            if (total > 0) printf "%d", (total - avail) * 100 / total
+            else            printf "0"
+        }
+    ' /proc/meminfo)
+    [[ -z "$pct" ]] && return
+    _history_append "$SMART_MOTD_CACHE_DIR/mem_samples" "$pct"
+}
+
 # ---- upgrade-available check ----
 # Hits GitHub releases/latest to find the newest published version, compares
 # against the locally-installed VERSION file, and stores the new version
@@ -543,4 +584,6 @@ cache_update_all() {
     cache_update_zpool
     cache_update_network_rates
     cache_update_version_check
+    cache_update_load_history
+    cache_update_mem_history
 }
