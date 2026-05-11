@@ -3,6 +3,42 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.9.0]
+
+**Re-setup:** not required.
+
+### Added — two new CLI commands
+
+- **`sudo smart-motd test-alert [ssh|recap]`** — fire a fake
+  Telegram alert immediately, without waiting for an SSH login
+  or the configured recap hour. Lets you verify your bot
+  token / chat ID / whitelist / language right after a config
+  change instead of guessing.
+  ```
+  sudo smart-motd test-alert         # ssh-login alert (default)
+  sudo smart-motd test-alert recap   # daily summary
+  ```
+  The recap fire uses `SMART_MOTD_FORCE_RECAP=1` to bypass the
+  hour gate and the once-per-day state file — but skips writing
+  the state file, so today's real recap still fires normally.
+
+- **`smart-motd config get [KEY]`** / **`sudo smart-motd config
+  set KEY VALUE`** — surgical edits to the config without
+  re-running the full wizard. Useful for Ansible / cloud-init /
+  shell scripts.
+  ```
+  smart-motd config get THEME
+  smart-motd config get WELCOME_LINES        # one line per array element
+  sudo smart-motd config set WEATHER_CITY Berlin
+  sudo smart-motd config set NETWORK_SHOW_RATES false
+  ```
+  Secrets (`TELEGRAM_BOT_TOKEN` / `CHAT_ID` / `THREAD_ID`)
+  automatically route to root-only `secrets.conf`. Array
+  values (e.g. `SSL_DOMAINS`, `NETWORK_INTERFACES`) refuse
+  `set` with a clear message — use `smart-motd edit` for those.
+- Bash tab completion updated to suggest `get / set / help`
+  for `config` and `ssh / recap / help` for `test-alert`.
+
 ## [1.8.1]
 
 **Re-setup:** not required.

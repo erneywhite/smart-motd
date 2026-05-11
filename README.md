@@ -7,7 +7,7 @@ Cross-distro (Debian / Ubuntu / RHEL / CentOS / Rocky / Alma / Fedora / Arch / o
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.8.1-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.9.0-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE%20%7C%20Alpine-blue)
 
 ## Preview
@@ -106,16 +106,19 @@ curl -fsSL https://raw.githubusercontent.com/erneywhite/smart-motd/main/install.
 ## Usage
 
 ```
-smart-motd show                # preview the MOTD right now
-smart-motd watch [SEC]         # re-render every SEC seconds (default 5) — alt-screen
-sudo smart-motd setup          # re-run the interactive wizard
-sudo smart-motd update-cache   # refresh cached values immediately
-sudo smart-motd edit           # open the config in $EDITOR
-smart-motd status              # show install paths and cache freshness
-smart-motd doctor              # diagnose the install (checks hooks/timers/freshness)
-smart-motd version             # show installed version + check for updates
-sudo smart-motd upgrade        # pull and install the latest release
-sudo smart-motd uninstall      # remove smart-motd
+smart-motd show                       # preview the MOTD right now
+smart-motd watch [SEC]                # re-render every SEC seconds (default 5)
+sudo smart-motd setup                 # re-run the interactive wizard
+sudo smart-motd update-cache          # refresh cached values immediately
+sudo smart-motd edit                  # open the config in $EDITOR
+smart-motd config get [KEY]           # print one value (or full config)
+sudo smart-motd config set KEY VAL    # set one scalar value without re-running setup
+sudo smart-motd test-alert [ssh|recap] # fire a Telegram alert right now
+smart-motd status                     # show install paths and cache freshness
+smart-motd doctor                     # diagnose the install
+smart-motd version                    # installed version + check for updates
+sudo smart-motd upgrade               # pull and install the latest release
+sudo smart-motd uninstall             # remove smart-motd
 ```
 
 If the login banner ever stops looking right, `smart-motd doctor` runs through every wired component (config, cache files, distro hook, systemd timers, `/run/motd.dynamic` freshness, generator dry-run, GitHub reachability) and reports each as `✓` / `!` / `✗` with a hint on how to fix it.

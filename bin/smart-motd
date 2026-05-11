@@ -13,17 +13,20 @@ smart-motd — customizable MOTD for Linux servers
 Usage: smart-motd <command>
 
 Commands:
-  show           Print the MOTD now (preview).
-  watch [SEC]    Re-render the MOTD every SEC seconds (default 5).
-  setup          Re-run the interactive configuration wizard.
-  update-cache   Refresh cached values (updates count, SSL, public IP, …).
-  edit           Open the config file in \$EDITOR.
-  status         Show install paths, distro detection, cache freshness.
-  doctor         Diagnose the install (check hooks, timers, freshness).
-  version        Show installed version (and check for updates).
-  upgrade        Re-run the installer to upgrade to the latest release.
-  uninstall      Remove smart-motd from this system.
-  help           Show this help.
+  show               Print the MOTD now (preview).
+  watch [SEC]        Re-render the MOTD every SEC seconds (default 5).
+  setup              Re-run the interactive configuration wizard.
+  update-cache       Refresh cached values (updates count, SSL, public IP, …).
+  edit               Open the config file in \$EDITOR.
+  config get [KEY]   Print one config value (or the whole config file).
+  config set KEY VAL Set one config value without re-running the wizard.
+  test-alert [MODE]  Fire a fake Telegram alert now (MODE = ssh | recap).
+  status             Show install paths, distro detection, cache freshness.
+  doctor             Diagnose the install (check hooks, timers, freshness).
+  version            Show installed version (and check for updates).
+  upgrade            Re-run the installer to upgrade to the latest release.
+  uninstall          Remove smart-motd from this system.
+  help               Show this help.
 
 Config file: /etc/smart-motd/config.conf
 Cache dir:   /var/cache/smart-motd
@@ -126,6 +129,175 @@ case "$cmd" in
         # Pipe install.sh into bash. Stdin to bash is the curl pipe, but
         # the installer reopens /dev/tty itself for the wizard.
         curl -fsSL "https://raw.githubusercontent.com/${SMART_MOTD_REPO}/main/install.sh" | bash
+        ;;
+    test-alert)
+        if [[ "$EUID" -ne 0 ]]; then
+            echo "smart-motd test-alert must be run as root (sudo smart-motd test-alert)." >&2
+            exit 1
+        fi
+        mode="${2:-ssh}"
+        case "$mode" in
+            ssh)
+                # Simulate the env that pam_exec passes to motd-ssh-alert. The
+                # alert script reads PAM_USER / PAM_RHOST and short-circuits
+                # on the wrong PAM_TYPE / PAM_SERVICE.
+                rhost="${SSH_CLIENT%% *}"
+                [[ -z "$rhost" ]] && rhost="127.0.0.1"
+                PAM_TYPE=open_session \
+                PAM_SERVICE=sshd \
+                PAM_USER="${USER:-${SUDO_USER:-root}}" \
+                PAM_RHOST="$rhost" \
+                    "${SMART_MOTD_PREFIX}/bin/motd-ssh-alert"
+                printf '✓ Test SSH-login alert dispatched — check your Telegram chat.\n'
+                ;;
+            recap)
+                # Bypass the hour gate + state-file in motd-recap so the
+                # message is sent immediately. State isn't updated so this
+                # doesn't suppress today's real recap.
+                SMART_MOTD_FORCE_RECAP=1 \
+                    "${SMART_MOTD_PREFIX}/bin/motd-recap"
+                printf '✓ Test recap dispatched — check your Telegram chat.\n'
+                ;;
+            help|-h|--help|"")
+                cat <<EOF
+Usage: smart-motd test-alert [ssh|recap]
+
+  ssh     Send a fake SSH-login alert with current user/host. Default.
+  recap   Fire the daily recap immediately, ignoring the configured hour
+          and the once-per-day state file.
+EOF
+                ;;
+            *)
+                echo "Unknown mode: $mode (try 'smart-motd test-alert help')" >&2
+                exit 1
+                ;;
+        esac
+        ;;
+    config)
+        # smart-motd config get [KEY]
+        # smart-motd config set KEY VALUE
+        sub="${2:-}"
+        key="${3:-}"
+        # Use everything after the key as the value, so 'config set X foo bar' works
+        shift 3 2>/dev/null || true
+        value="$*"
+
+        cfg=/etc/smart-motd/config.conf
+        secrets=/etc/smart-motd/secrets.conf
+
+        # Secret keys live in the root-only secrets.conf, not in
+        # config.conf — keep them in the right file.
+        _is_secret() {
+            case "$1" in
+                TELEGRAM_BOT_TOKEN|TELEGRAM_CHAT_ID|TELEGRAM_THREAD_ID) return 0 ;;
+                *) return 1 ;;
+            esac
+        }
+
+        case "$sub" in
+            get)
+                if [[ -z "$key" ]]; then
+                    # No KEY — dump the full config file.
+                    if [[ -r "$cfg" ]]; then
+                        cat "$cfg"
+                    else
+                        echo "No config at $cfg" >&2
+                        exit 1
+                    fi
+                    exit 0
+                fi
+                # Source both files (need root for secrets to be readable)
+                # shellcheck disable=SC1090
+                [[ -r "$cfg" ]]      && . "$cfg"
+                # shellcheck disable=SC1090
+                [[ -r "$secrets" ]]  && . "$secrets"
+                if [[ ! -v "$key" ]] && ! declare -p "$key" >/dev/null 2>&1; then
+                    echo "(unset)"
+                    exit 0
+                fi
+                # Distinguish scalar vs array. `declare -p NAME` prints
+                # 'declare -a NAME=...' for arrays.
+                if declare -p "$key" 2>/dev/null | grep -q '^declare -a'; then
+                    # array — print one element per line
+                    eval "for v in \"\${${key}[@]}\"; do printf '%s\\n' \"\$v\"; done"
+                else
+                    printf '%s\n' "${!key}"
+                fi
+                ;;
+            set)
+                if [[ "$EUID" -ne 0 ]]; then
+                    echo "smart-motd config set must be run as root." >&2
+                    exit 1
+                fi
+                if [[ -z "$key" ]]; then
+                    echo "Usage: smart-motd config set KEY VALUE" >&2
+                    exit 1
+                fi
+                # If the existing value is an array, refuse — we don't have
+                # a sane way to express "replace with these N items" in a
+                # CLI flag, and silently scalar-overwriting would corrupt
+                # the user's existing list.
+                # shellcheck disable=SC1090
+                [[ -r "$cfg" ]]     && . "$cfg"
+                # shellcheck disable=SC1090
+                [[ -r "$secrets" ]] && . "$secrets"
+                if declare -p "$key" 2>/dev/null | grep -q '^declare -a'; then
+                    echo "$key is an array — edit it via 'sudo smart-motd edit' (or the wizard)." >&2
+                    exit 1
+                fi
+
+                # Pick the right destination file based on whether KEY is a
+                # secret. Both files use bash-sourceable single-quoted
+                # values.
+                if _is_secret "$key"; then
+                    file="$secrets"; mode=0600
+                else
+                    file="$cfg"; mode=0644
+                fi
+                # Safe single-quote: '...' with embedded ' escaped as '\''
+                quoted=$(printf "'%s'" "${value//\'/\'\\\'\'}")
+
+                if [[ -f "$file" ]] && grep -q "^${key}=" "$file"; then
+                    # Replace existing line in place
+                    tmp=$(mktemp) || { echo "mktemp failed" >&2; exit 1; }
+                    awk -v k="$key" -v v="$quoted" '
+                        $0 ~ "^"k"="  { print k"="v; next }
+                        { print }
+                    ' "$file" > "$tmp"
+                    cat "$tmp" > "$file"
+                    rm -f "$tmp"
+                else
+                    # Append (creating the file if needed)
+                    [[ -f "$file" ]] || { : > "$file"; chmod "$mode" "$file"; }
+                    printf '%s=%s\n' "$key" "$quoted" >> "$file"
+                fi
+                chmod "$mode" "$file" 2>/dev/null || true
+                printf '✓ %s=%s saved to %s\n' "$key" "$quoted" "$file"
+                # Refresh /run/motd.dynamic on Debian so the new value
+                # shows on the next login without waiting for the timer.
+                if [[ -d /etc/update-motd.d ]] && command -v run-parts >/dev/null 2>&1; then
+                    SMART_MOTD_FORCE_COLOR=1 run-parts /etc/update-motd.d/ >/run/motd.dynamic 2>/dev/null || true
+                fi
+                ;;
+            ""|help|-h|--help)
+                cat <<EOF
+Usage:
+  smart-motd config get          Print the whole config file.
+  smart-motd config get KEY      Print one value (one line per array element).
+  smart-motd config set KEY VAL  Set / overwrite one scalar value.
+
+Notes:
+  - Array values (e.g. NETWORK_INTERFACES, WELCOME_LINES, SSL_DOMAINS) are
+    read-only via this command — use 'sudo smart-motd edit' or re-run setup.
+  - Secret keys (TELEGRAM_BOT_TOKEN / CHAT_ID / THREAD_ID) live in
+    /etc/smart-motd/secrets.conf and require root to read or write.
+EOF
+                ;;
+            *)
+                echo "Unknown config subcommand: $sub (try 'smart-motd config help')" >&2
+                exit 1
+                ;;
+        esac
         ;;
     help|-h|--help) usage ;;
     *)            usage; exit 1 ;;

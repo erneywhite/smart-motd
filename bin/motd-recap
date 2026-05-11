@@ -34,14 +34,16 @@ NOW_HOUR=$(date +%H)
 NOW_HOUR=$((10#$NOW_HOUR))   # strip leading zero
 TODAY=$(date +%Y-%m-%d)
 
-# Only fire during the configured hour
-[[ "$NOW_HOUR" == "$TELEGRAM_RECAP_HOUR" ]] || exit 0
-
-# At-most-once per day: bail if we already sent today.
+# When called from `smart-motd test-alert recap`, bypass the hour and
+# state-file gates so the message goes out immediately. Also skip writing
+# the state file at the end, so the real daily fire isn't suppressed.
 STATE="$SMART_MOTD_CACHE_DIR/recap_last_sent"
-if [[ -r "$STATE" ]]; then
-    LAST=$(cat "$STATE" 2>/dev/null)
-    [[ "$LAST" == "$TODAY" ]] && exit 0
+if [[ "${SMART_MOTD_FORCE_RECAP:-}" != "1" ]]; then
+    [[ "$NOW_HOUR" == "$TELEGRAM_RECAP_HOUR" ]] || exit 0
+    if [[ -r "$STATE" ]]; then
+        LAST=$(cat "$STATE" 2>/dev/null)
+        [[ "$LAST" == "$TODAY" ]] && exit 0
+    fi
 fi
 
 # ---------- gather data ----------
@@ -197,9 +199,13 @@ args=(
 [[ -n "$TELEGRAM_THREAD_ID" ]] && args+=( --data-urlencode "message_thread_id=${TELEGRAM_THREAD_ID}" )
 
 if curl -fsS --max-time 10 "${args[@]}" "$URL" >/dev/null 2>&1; then
-    # Mark today as sent so we don't fire again this hour
-    mkdir -p "$SMART_MOTD_CACHE_DIR"
-    printf '%s\n' "$TODAY" > "$STATE"
+    # Mark today as sent so we don't fire again this hour. Skip when this
+    # was a forced test fire — otherwise the test would suppress today's
+    # real recap.
+    if [[ "${SMART_MOTD_FORCE_RECAP:-}" != "1" ]]; then
+        mkdir -p "$SMART_MOTD_CACHE_DIR"
+        printf '%s\n' "$TODAY" > "$STATE"
+    fi
 fi
 
 exit 0
