@@ -394,20 +394,25 @@ print_summary
 NEW_VERSION=""
 [[ -r "$PREFIX/VERSION" ]] && NEW_VERSION=$(cat "$PREFIX/VERSION" 2>/dev/null | tr -d ' \r\n')
 
-# Print the CHANGELOG section for a given version. Reads /usr/local/lib/
-# smart-motd/CHANGELOG.md (shipped alongside the runtime), extracts the
-# "## [VERSION]" block, and prints it indented. Silent if the changelog
-# is missing or the version isn't found there.
+# Print the CHANGELOG section for a given version, truncated to a sane
+# number of lines. Reads /usr/local/lib/smart-motd/CHANGELOG.md (shipped
+# alongside the runtime), extracts the "## [VERSION]" block, and prints
+# it indented. Silent if the changelog is missing or the version isn't
+# found there. Strips the **Re-setup:** marker line — that's parsed
+# separately into a clear status message below.
+CHANGELOG_MAX_LINES=20
+
 show_changelog_for_version() {
     local v="$1" file="$PREFIX/CHANGELOG.md"
     [[ -r "$file" ]] || return
-    local body
+    local body total
     body=$(awk -v want="$v" '
         BEGIN { in_block = 0; printed = 0; pending = "" }
         $0 ~ "^## \\[" want "\\]" { in_block = 1; next }
         in_block && /^## \[/      { exit }
         in_block {
-            if (printed == 0 && $0 ~ /^[[:space:]]*$/) next  # skip leading blanks
+            if ($0 ~ /\*\*Re-setup:\*\*/) next       # parsed separately
+            if (printed == 0 && $0 ~ /^[[:space:]]*$/) next
             if ($0 ~ /^[[:space:]]*$/) {
                 pending = pending "\n"
             } else {
@@ -418,11 +423,39 @@ show_changelog_for_version() {
         }
     ' "$file")
     [[ -z "$body" ]] && return
+    total=$(printf '%s\n' "$body" | wc -l | tr -d ' ')
+
     printf '\n  %sWhat'\''s new in v%s%s\n' "${C_BOLD}" "$v" "${C_RESET}"
     printf '  %s──────────────────────────────────────────────%s\n' "${C_DIM}" "${C_RESET}"
+    local i=0
     while IFS= read -r line; do
+        i=$((i + 1))
+        if (( i > CHANGELOG_MAX_LINES )); then
+            local remaining=$(( total - CHANGELOG_MAX_LINES ))
+            printf '  %s… %d more line(s) — see %s/CHANGELOG.md for the full entry%s\n' \
+                "${C_DIM}" "$remaining" "$PREFIX" "${C_RESET}"
+            break
+        fi
         printf '  %s\n' "$line"
     done <<<"$body"
+}
+
+# Parse the Re-setup marker line from a CHANGELOG entry. Returns one of:
+#   "not required" | "optional" | "recommended" | ""  (no marker)
+get_resetup_status() {
+    local v="$1" file="$PREFIX/CHANGELOG.md"
+    [[ -r "$file" ]] || return
+    awk -v want="$v" '
+        $0 ~ "^## \\[" want "\\]" { in_block = 1; next }
+        in_block && /^## \[/      { exit }
+        in_block && /\*\*Re-setup:\*\*/ {
+            sub(/^.*\*\*Re-setup:\*\*[[:space:]]*/, "")
+            sub(/[[:space:]]*[.,].*$/, "")
+            sub(/[[:space:]]*$/, "")
+            print tolower($0)
+            exit
+        }
+    ' "$file"
 }
 
 # ---------- post-install: fresh vs upgrade ----------
@@ -453,6 +486,35 @@ else
     printf '\n  %s✓ Upgraded smart-motd v%s → v%s%s\n' \
         "${C_BRIGHT_GREEN}${C_BOLD}" "$OLD_VERSION" "$NEW_VERSION" "${C_RESET}"
     show_changelog_for_version "$NEW_VERSION"
-    printf '\n  %sIf any new options need configuring, run:%s %ssudo smart-motd setup%s\n\n' \
-        "${C_DIM}" "${C_RESET}" "${C_BRIGHT_CYAN}" "${C_RESET}"
+
+    # Tell the operator whether they need to re-run setup or not, based on
+    # the "Re-setup:" marker the release author put in the CHANGELOG entry.
+    resetup=$(get_resetup_status "$NEW_VERSION")
+    printf '\n'
+    case "$resetup" in
+        "not required")
+            printf '  %s✓ No re-setup needed%s — your existing config keeps working.\n' \
+                "${C_BRIGHT_GREEN}" "${C_RESET}"
+            printf '    %sIf you do want to change settings later, run:%s %ssudo smart-motd setup%s\n\n' \
+                "${C_DIM}" "${C_RESET}" "${C_BRIGHT_CYAN}" "${C_RESET}"
+            ;;
+        "optional")
+            printf '  %s↪ Optional re-setup%s — new opt-in features are available.\n' \
+                "${C_BRIGHT_CYAN}" "${C_RESET}"
+            printf '    %sTo enable them, run:%s %ssudo smart-motd setup%s\n\n' \
+                "${C_DIM}" "${C_RESET}" "${C_BRIGHT_CYAN}" "${C_RESET}"
+            ;;
+        "recommended")
+            printf '  %s⚠ Re-setup recommended%s — new features need configuration.\n' \
+                "${C_YELLOW}${C_BOLD}" "${C_RESET}"
+            printf '    %sRun:%s %ssudo smart-motd setup%s\n\n' \
+                "${C_DIM}" "${C_RESET}" "${C_BRIGHT_CYAN}" "${C_RESET}"
+            ;;
+        *)
+            # No marker in the changelog entry — fall back to the generic
+            # hint. This covers older entries that pre-date the marker.
+            printf '  %sIf any new options need configuring, run:%s %ssudo smart-motd setup%s\n\n' \
+                "${C_DIM}" "${C_RESET}" "${C_BRIGHT_CYAN}" "${C_RESET}"
+            ;;
+    esac
 fi

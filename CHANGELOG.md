@@ -3,7 +3,28 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.8.1]
+
+**Re-setup:** not required.
+
+### Changed — clearer upgrade messaging
+- The installer now prints a single explicit line about whether
+  re-setup is needed, instead of the vague "if any new options
+  need configuring…" hint. Each CHANGELOG entry carries a
+  `**Re-setup:** not required | optional | recommended` marker
+  that the installer parses and renders as:
+  ```
+  ✓ No re-setup needed — your existing config keeps working.
+  ↪ Optional re-setup — new opt-in features are available.
+  ⚠ Re-setup recommended — new features need configuration.
+  ```
+- Long CHANGELOG entries are now truncated to 20 lines in the
+  installer output, with a hint to read the shipped
+  `CHANGELOG.md` for the full entry.
+
 ## [1.8.0]
+
+**Re-setup:** not required.
 
 ### Changed — installer output on upgrade
 - `smart-motd upgrade` (and any re-install of a different
@@ -31,6 +52,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [1.7.1]
 
+**Re-setup:** not required.
+
 ### Changed
 - Daily Telegram recap now reports only the root mountpoint
   (`/`) for disk usage, instead of every entry in
@@ -40,6 +63,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
   the operator can scan it interactively.
 
 ## [1.7.0]
+
+**Re-setup:** not required.
 
 ### Added — daily Telegram recap is more useful
 - Recap now also includes:
@@ -60,6 +85,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [1.6.2]
 
+**Re-setup:** not required.
+
 ### Fixed
 - Right after `sudo smart-motd upgrade`, the MOTD reported a
   bogus "↑ smart-motd vX.Y.Z available (you have vX.Y.Z)" until
@@ -79,6 +106,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [1.6.1]
 
+**Re-setup:** not required.
+
 ### Changed
 - The upgrade-notice section is now a **system parameter** — no
   longer optional. Removed it from the wizard's first multiselect
@@ -91,6 +120,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
   the install is up-to-date.
 
 ## [1.6.0]
+
+**Re-setup:** not required.
 
 ### Added — passive upgrade notice
 - New section `upgrade_notice` (last in `SECTION_ORDER`) shows
@@ -184,6 +215,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 
 ## [1.5.0]
 
+**Re-setup:** optional.
+
 ### Added
 
 - **IP whitelist for Telegram SSH alerts** — new
@@ -243,6 +276,8 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
   Also works in zsh sessions that have run `bashcompinit`.
 
 ## [1.4.0]
+
+**Re-setup:** recommended.
 
 ### Added — Telegram SSH login alerts
 - New opt-in feature: send a Telegram notification on every
