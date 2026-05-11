@@ -3,6 +3,30 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.10.0]
+
+**Re-setup:** optional.
+
+### Added — backup-age annotation in Monitored directories
+- Each entry in `DIRECTORIES_LIST` can now optionally be flagged
+  as a backup directory by appending `|backup` to the
+  `Label|Path` format (`'Backups|/srv/backups|backup'`). For
+  flagged entries, the MOTD additionally shows the age of the
+  newest file inside the path, color-coded by staleness:
+  ```
+  Backups            396M  /srv/backups  (newest: 2h ago)    ← green
+  DB dumps           1.2G  /srv/db       (newest: 6d ago)    ← yellow (≥2 days)
+  Old archive        45G   /srv/archive  (newest: 45d ago)   ← red    (≥7 days)
+  Stale              0     /srv/empty    (no files)          ← red
+  ```
+- Wizard adds a follow-up multiselect after the list editor:
+  "Which directories are backups?" — tick the ones that hold
+  rotating backup files. On re-runs, the previously-flagged
+  entries are pre-checked.
+- Newest-file mtime is computed in the cache job via
+  `find -printf '%T@' | sort -n | head -1` (GNU find), so the
+  on-login path stays free of the heavy scan.
+
 ## [1.9.1]
 
 **Re-setup:** not required.

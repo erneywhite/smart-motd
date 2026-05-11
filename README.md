@@ -7,7 +7,7 @@ Cross-distro (Debian / Ubuntu / RHEL / CentOS / Rocky / Alma / Fedora / Arch / o
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.9.1-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.10.0-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE%20%7C%20Alpine-blue)
 
 ## Preview
@@ -147,7 +147,7 @@ Each section is independent and can be turned on/off in the config (or via the w
 | **VPN** | WireGuard interfaces (peers + handshakes), OpenVPN daemons | Cached (wg requires root) |
 | **Time sync** | NTP server, offset, sync state | `timedatectl` / `chronyc` / `ntpq` |
 | **Storage arrays** | mdadm RAID + ZFS pools | Color-coded by health |
-| **Directories** | Custom labeled paths with sizes | E.g. backups, big project dirs |
+| **Directories** | Custom labeled paths with sizes; optional backup-age annotation | E.g. backups, big project dirs; backup-flagged entries show `newest: Nh ago` color-coded by staleness |
 | **Recent logins** | Last N successful logins | |
 | **Weather** | One-line wttr.in summary | Off by default; auto-detects your city via IP |
 | **Telegram SSH alerts** | (not visible in MOTD) Sends a Telegram message on every SSH login | Off by default; PAM-hooked; bot token in root-only `/etc/smart-motd/secrets.conf`; EN/RU message language |

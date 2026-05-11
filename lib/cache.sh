@@ -210,19 +210,46 @@ cache_update_weather() {
 }
 
 # ---- directory sizes ----
-# Output one line per configured dir: "label|path|human_size"
+# Each DIRECTORIES_LIST entry is either:
+#   "Label|/path"          → just track size
+#   "Label|/path|backup"   → also track age of the newest file inside
+#                             (useful for verifying scheduled backups land)
+# Cache output (one line per entry): label|path|size|type|newest_age
+# newest_age formats: "Xm ago" / "Xh ago" / "Xd ago" / "just now" / ""
 cache_update_directories() {
     [[ "${DIRECTORIES_ENABLED:-false}" == "true" ]] || { cache_write "directories" ""; return; }
-    local lines="" entry
+    local lines="" entry label path type size newest_age
+    local now
+    now=$(date +%s)
     for entry in "${DIRECTORIES_LIST[@]:-}"; do
         [[ -z "$entry" ]] && continue
-        local label="${entry%%|*}" path="${entry##*|}"
-        local size="missing"
+        # Parse three-field format. `read` correctly handles entries with
+        # only 2 fields (type defaults to dir below).
+        IFS='|' read -r label path type <<<"$entry"
+        [[ -z "$type" ]] && type="dir"
+        size="missing"
+        newest_age=""
         if [[ -e "$path" ]]; then
             size=$(du -sh "$path" 2>/dev/null | awk '{print $1}')
             [[ -z "$size" ]] && size="?"
+            if [[ "$type" == "backup" ]]; then
+                # Newest file (not directories themselves) by mtime.
+                # -printf is GNU find; fall back to stat-on-glob is harder,
+                # so we just leave newest_age empty when find lacks it.
+                local newest_epoch
+                newest_epoch=$(find "$path" -type f -printf '%T@\n' 2>/dev/null \
+                    | sort -rn | head -1)
+                if [[ -n "$newest_epoch" ]]; then
+                    local age=$(( now - ${newest_epoch%.*} ))
+                    if (( age < 60 ));        then newest_age="just now"
+                    elif (( age < 3600 ));    then newest_age="$((age/60))m ago"
+                    elif (( age < 86400 ));   then newest_age="$((age/3600))h ago"
+                    else                            newest_age="$((age/86400))d ago"
+                    fi
+                fi
+            fi
         fi
-        lines+="${label}|${path}|${size}"$'\n'
+        lines+="${label}|${path}|${size}|${type}|${newest_age}"$'\n'
     done
     cache_write "directories" "$lines"
 }

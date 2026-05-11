@@ -837,14 +837,67 @@ fi
 
 # --- Directories ---
 
-if [[ "$DIRECTORIES_ENABLED" == "true" ]]; then
-    mapfile -t DIRECTORIES_LIST < <(wizard_list \
+configure_directories_page() {
+    # Step 1: collect Label|/path entries (drop any existing |type suffix
+    # before pre-filling, so the list editor just shows Label|/path).
+    local plain_list=() entry label path type
+    for entry in "${DIRECTORIES_LIST[@]:-}"; do
+        [[ -z "$entry" ]] && continue
+        IFS='|' read -r label path type <<<"$entry"
+        plain_list+=("${label}|${path}")
+    done
+
+    mapfile -t plain_list < <(wizard_list \
         "$(_l "Monitored directories" "Отслеживаемые каталоги")" \
         "$(_l \
-"Show 'du -sh' for each path (cached for 5 min). Format: Label|/absolute/path (e.g. Backups|/srv/backups)." \
-"Показывает 'du -sh' для каждого пути (кешируется на 5 мин). Формат: Label|/absolute/path (например Backups|/srv/backups).")" \
-        "${DIRECTORIES_LIST[@]}")
-    [[ ${#DIRECTORIES_LIST[@]} -eq 0 ]] && DIRECTORIES_ENABLED=false
+"Show 'du -sh' for each path (cached for 5 min). Format: Label|/absolute/path (e.g. Backups|/srv/backups). The next page asks which of these are backup directories — for those, the MOTD will additionally show the age of the newest file inside." \
+"Показывает 'du -sh' для каждого пути (кешируется на 5 мин). Формат: Label|/absolute/path (например Backups|/srv/backups). На следующей странице визард спросит какие из них являются бэкап-каталогами — для них MOTD дополнительно покажет возраст последнего файла внутри.")" \
+        "${plain_list[@]}")
+
+    if [[ ${#plain_list[@]} -eq 0 ]]; then
+        DIRECTORIES_LIST=()
+        DIRECTORIES_ENABLED=false
+        return
+    fi
+
+    # Step 2: multiselect — which of the entries are backup directories?
+    # Pre-check those that already had |backup in the loaded config.
+    local multi=() lp was_backup e prev
+    for lp in "${plain_list[@]}"; do
+        was_backup=0
+        for prev in "${DIRECTORIES_LIST[@]:-}"; do
+            # prev format may be label|path|backup
+            if [[ "$prev" == "${lp}|backup" ]]; then
+                was_backup=1; break
+            fi
+        done
+        multi+=("${was_backup}${lp}")
+    done
+
+    mapfile -t selected_backups < <(wizard_multiselect \
+        "$(_l "Which directories are backups?" "Какие каталоги — бэкапники?")" \
+        "$(_l \
+"Tick each directory that holds rotating backup files. For ticked entries, the MOTD adds 'newest: 2h ago' next to the size — green when recent, yellow at 2+ days, red at 7+ days or no files at all. Leave everything unticked if none of the entries are backups." \
+"Отметьте каждый каталог, в который кладутся ротируемые бэкап-файлы. Для отмеченных MOTD будет добавлять 'newest: 2h ago' рядом с размером — зелёный если свежий, жёлтый при 2+ днях, красный при 7+ днях или если файлов нет совсем. Если бэкап-каталогов нет — просто ничего не отмечайте.")" \
+        -- "${multi[@]}")
+
+    # Reassemble final list with the type suffix where applicable.
+    DIRECTORIES_LIST=()
+    for lp in "${plain_list[@]}"; do
+        local is_backup=false
+        for e in "${selected_backups[@]}"; do
+            [[ "$e" == "$lp" ]] && is_backup=true && break
+        done
+        if $is_backup; then
+            DIRECTORIES_LIST+=("${lp}|backup")
+        else
+            DIRECTORIES_LIST+=("$lp")
+        fi
+    done
+}
+
+if [[ "$DIRECTORIES_ENABLED" == "true" ]]; then
+    configure_directories_page
 fi
 
 # --- Last logins ---
