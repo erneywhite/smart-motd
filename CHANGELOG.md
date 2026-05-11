@@ -3,6 +3,16 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.7.1]
+
+### Changed
+- Daily Telegram recap now reports only the root mountpoint
+  (`/`) for disk usage, instead of every entry in
+  `SYSTEM_DISK_PATHS`. Rationale: the recap is a once-a-day
+  glance message — multiple disk lines bloat it. The full
+  per-mountpoint listing remains in the on-login MOTD where
+  the operator can scan it interactively.
+
 ## [1.7.0]
 
 ### Added — daily Telegram recap is more useful

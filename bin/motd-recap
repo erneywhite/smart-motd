@@ -131,15 +131,14 @@ if [[ -s "$SMART_MOTD_CACHE_DIR/mem_samples" ]]; then
     ' "$SMART_MOTD_CACHE_DIR/mem_samples")
 fi
 
-# Current disk usage for each configured mountpoint (same shape as
-# the System status section in the MOTD itself).
-DISK_PATHS=("${SYSTEM_DISK_PATHS[@]:-/}")
-DISK_LINES=()
-for mp in "${DISK_PATHS[@]}"; do
-    line=$(df -hP "$mp" 2>/dev/null \
-        | awk 'NR==2 {gsub("%","",$5); printf "%s / %s (%s%% used)", $3, $2, $5}')
-    [[ -n "$line" ]] && DISK_LINES+=("${mp}|${line}")
-done
+# Current root-disk usage. Recap deliberately reports ONLY '/' (the system
+# disk) — additional configured SYSTEM_DISK_PATHS belong in the on-login
+# MOTD where the operator can scan them all at once. The Telegram recap is
+# a once-a-day glance message, so we keep it to the single most universal
+# data point.
+DISK_ROOT=""
+DISK_ROOT=$(df -hP / 2>/dev/null \
+    | awk 'NR==2 {gsub("%","",$5); printf "%s / %s (%s%% used)", $3, $2, $5}')
 
 # ---------- compose message ----------
 
@@ -153,11 +152,8 @@ if [[ "$TELEGRAM_ALERTS_LANG" == "ru" ]]; then
 📈 Средний LA (24ч): ${AVG_LOAD}"
     [[ -n "$AVG_MEM" ]]  && MSG+="
 🧠 Средняя память (24ч): ${AVG_MEM}%"
-    for entry in "${DISK_LINES[@]}"; do
-        mp="${entry%%|*}"; line="${entry#*|}"
-        MSG+="
-💾 Диск ${mp}: ${line}"
-    done
+    [[ -n "$DISK_ROOT" ]] && MSG+="
+💾 Диск /: ${DISK_ROOT}"
     MSG+="
 📦 Обновлений пакетов: ${UPDATES_COUNT}"
     [[ "$UPDATES_SECURITY" -gt 0 ]] && MSG+=" (security: ${UPDATES_SECURITY})"
@@ -177,11 +173,8 @@ else
 📈 Avg load (24h): ${AVG_LOAD}"
     [[ -n "$AVG_MEM" ]]  && MSG+="
 🧠 Avg memory (24h): ${AVG_MEM}%"
-    for entry in "${DISK_LINES[@]}"; do
-        mp="${entry%%|*}"; line="${entry#*|}"
-        MSG+="
-💾 Disk ${mp}: ${line}"
-    done
+    [[ -n "$DISK_ROOT" ]] && MSG+="
+💾 Disk /: ${DISK_ROOT}"
     MSG+="
 📦 Package updates: ${UPDATES_COUNT}"
     [[ "$UPDATES_SECURITY" -gt 0 ]] && MSG+=" (security: ${UPDATES_SECURITY})"
