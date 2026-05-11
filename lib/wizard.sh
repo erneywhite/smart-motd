@@ -602,56 +602,124 @@ wizard_multiselect() {
 # Usage:
 #   result=$(wizard_list "Title" "Help" "${current[@]}")
 #   mapfile -t newlist <<<"$result"
-# (Note: empty list returns no output.)
+# (Empty list returns no output.)
+#
+# Cursor-based: Up/Down navigates, [a] adds at end, [e] edits the current
+# entry, [d] deletes the current entry, [c] clears all (with confirm).
+# Enter saves and exits.
 
 wizard_list() {
     _wiz_step_incr
     local title="$1" help="$2"
     shift 2
     local items=("$@")
-    local key
+    local key seq sel=0 cols max_label label i viewport_size viewport_top=0 viewport_end
+    local confirm_clear=0
 
+    _wiz_hide_cursor
     while true; do
+        local n=${#items[@]}
+        (( sel >= n )) && sel=$(( n > 0 ? n - 1 : 0 ))
+        (( sel < 0 )) && sel=0
+
+        cols=$(_wiz_cols)
+        max_label=$(( cols - 10 ))
+        (( max_label < 10 )) && max_label=10
+        viewport_size=$(_wiz_viewport_size "$help")
+
+        if (( sel < viewport_top )); then
+            viewport_top=$sel
+        elif (( sel >= viewport_top + viewport_size )); then
+            viewport_top=$(( sel - viewport_size + 1 ))
+        fi
+        viewport_end=$(( viewport_top + viewport_size ))
+        (( viewport_end > n )) && viewport_end=$n
+
         _wiz_header "$title"
         _wiz_help "$help"
 
-        local cols max_label label
-        cols=$(_wiz_cols)
-        max_label=$(( cols - 8 ))
-        (( max_label < 10 )) && max_label=10
-
-        if [[ ${#items[@]} -eq 0 ]]; then
-            _p "  \e[2m(empty list)\e[0m\n"
+        if (( n == 0 )); then
+            _p "  \e[2m(empty list — press [a] to add an entry)\e[0m\n"
         else
-            local i
-            for i in "${!items[@]}"; do
+            if (( viewport_top > 0 )); then
+                _p "  \e[2m^ $viewport_top more above\e[0m\n"
+            fi
+            for ((i = viewport_top; i < viewport_end; i++)); do
                 label=$(_truncate "${items[i]}" "$max_label")
-                _p "  \e[2m$(printf '%2d.' $((i+1)))\e[0m ${label}\n"
+                if (( i == sel )); then
+                    _p "  \e[1;36m>\e[0m \e[2m$(printf '%2d.' $((i+1)))\e[0m \e[1m${label}\e[0m\n"
+                else
+                    _p "    \e[2m$(printf '%2d.' $((i+1)))\e[0m ${label}\n"
+                fi
             done
+            if (( viewport_end < n )); then
+                _p "  \e[2mv $((n - viewport_end)) more below\e[0m\n"
+            fi
         fi
-        _wiz_footer "[a] add · [d] delete last · [c] clear · Enter to finish"
+
+        if (( confirm_clear == 1 )); then
+            _wiz_footer "[c] again = clear all · any other key cancels"
+        else
+            _wiz_footer "up/down move · [a]dd · [e]dit · [d]elete · [c]lear · Enter save"
+        fi
 
         _wiz_clear_tail
         IFS= read -rsn1 key </dev/tty || break
+
+        # Clear-confirm gate: any key other than 'c'/'C' cancels.
+        if (( confirm_clear == 1 )); then
+            case "$key" in
+                c|C) items=(); sel=0; viewport_top=0 ;;
+            esac
+            confirm_clear=0
+            continue
+        fi
+
         case "$key" in
+            $'\e')
+                IFS= read -rsn2 -t 0.05 seq </dev/tty 2>/dev/null || seq=""
+                case "$seq" in
+                    "[A"|"OA") (( sel > 0 )) && sel=$((sel - 1)) ;;
+                    "[B"|"OB") (( sel < n - 1 )) && sel=$((sel + 1)) ;;
+                esac
+                ;;
+            j|J) (( sel < n - 1 )) && sel=$((sel + 1)) ;;
+            k|K) (( sel > 0 )) && sel=$((sel - 1)) ;;
             a|A)
-                _p "\n  Add: "
                 _wiz_show_cursor
+                _p "\n  Add: "
                 local new
                 IFS= read -r new </dev/tty
                 _wiz_hide_cursor
-                [[ -n "$new" ]] && items+=("$new")
+                [[ -n "$new" ]] && { items+=("$new"); sel=$(( ${#items[@]} - 1 )); }
+                ;;
+            e|E)
+                if (( n > 0 )); then
+                    _wiz_show_cursor
+                    _p "\n  Edit (Enter to keep current): "
+                    local edited
+                    # Pre-fill the input line with the current value so the
+                    # user can edit instead of retyping. `read -e -i` requires
+                    # readline; falls back to plain prompt if unavailable.
+                    if ! IFS= read -r -e -i "${items[sel]}" edited </dev/tty 2>/dev/null; then
+                        IFS= read -r edited </dev/tty
+                    fi
+                    _wiz_hide_cursor
+                    [[ -n "$edited" ]] && items[sel]="$edited"
+                fi
                 ;;
             d|D)
-                if [[ ${#items[@]} -gt 0 ]]; then
-                    unset 'items[${#items[@]}-1]'
+                if (( n > 0 )); then
+                    unset 'items[sel]'
                     items=("${items[@]}")
+                    n=${#items[@]}
+                    (( sel >= n )) && sel=$(( n > 0 ? n - 1 : 0 ))
                 fi
                 ;;
             c|C)
-                items=()
+                (( n > 0 )) && confirm_clear=1
                 ;;
-            "")  break ;;
+            "") break ;;
         esac
     done
     _wiz_show_cursor

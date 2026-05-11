@@ -3,6 +3,28 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.12.2]
+
+**Re-setup:** not required.
+
+### Fixed — wizard list editor: can't delete middle entries
+- The list editor (`wizard_list` — used by SSL_DOMAINS,
+  NETWORK_INTERFACES, WELCOME_LINES, custom services, etc.)
+  previously only supported "delete the LAST entry". To
+  remove an entry from the middle you had to delete everything
+  after it and re-add — very easy to lose data.
+- Rewrote as cursor-based: arrow keys move a `>` cursor over
+  the list, `[d]` deletes the **highlighted** entry, `[a]` adds
+  a new entry, `[e]` edits the highlighted entry in place
+  (pre-filled with the current value for tweaks), `[c]` clears
+  everything (with a one-keystroke confirm so you can't nuke
+  the list by accident). Enter saves and exits.
+- Viewport scrolling for long lists (matches the existing
+  `wizard_multiselect` behavior).
+- ASCII chrome (`>`, `^`, `v`) — same as everywhere else in
+  the wizard, no Unicode glyphs that minimal-font TTYs render
+  as boxes.
+
 ## [1.12.1]
 
 **Re-setup:** optional.
