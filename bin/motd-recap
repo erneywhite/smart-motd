@@ -17,6 +17,7 @@ TELEGRAM_ALERTS_LANG=en
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
 TELEGRAM_THREAD_ID=""
+TELEGRAM_DESTS=()
 TELEGRAM_RECAP_ENABLED=false
 TELEGRAM_RECAP_HOUR=9
 
@@ -27,8 +28,17 @@ TELEGRAM_RECAP_HOUR=9
 
 [[ "$TELEGRAM_ALERTS_ENABLED" == "true" ]] || exit 0
 [[ "$TELEGRAM_RECAP_ENABLED"  == "true" ]] || exit 0
-[[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]] || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
+
+# Same multi-destination handling as motd-ssh-alert: primary tuple + extras.
+ALL_DESTS=()
+if [[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]]; then
+    ALL_DESTS+=("${TELEGRAM_BOT_TOKEN}|${TELEGRAM_CHAT_ID}|${TELEGRAM_THREAD_ID:-}")
+fi
+for d in "${TELEGRAM_DESTS[@]:-}"; do
+    [[ -n "$d" ]] && ALL_DESTS+=("$d")
+done
+[[ ${#ALL_DESTS[@]} -gt 0 ]] || exit 0
 
 NOW_HOUR=$(date +%H)
 NOW_HOUR=$((10#$NOW_HOUR))   # strip leading zero
@@ -189,23 +199,29 @@ else
 fi
 
 # ---------- send ----------
+# Send to every destination. We consider the day "sent" if at least one
+# destination accepted — otherwise a single broken destination would block
+# all the others from being remembered as delivered.
 
-URL="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
-args=(
-    --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}"
-    --data-urlencode "text=${MSG}"
-    --data-urlencode "disable_web_page_preview=true"
-)
-[[ -n "$TELEGRAM_THREAD_ID" ]] && args+=( --data-urlencode "message_thread_id=${TELEGRAM_THREAD_ID}" )
-
-if curl -fsS --max-time 10 "${args[@]}" "$URL" >/dev/null 2>&1; then
-    # Mark today as sent so we don't fire again this hour. Skip when this
-    # was a forced test fire — otherwise the test would suppress today's
-    # real recap.
-    if [[ "${SMART_MOTD_FORCE_RECAP:-}" != "1" ]]; then
-        mkdir -p "$SMART_MOTD_CACHE_DIR"
-        printf '%s\n' "$TODAY" > "$STATE"
+any_ok=0
+for dest in "${ALL_DESTS[@]}"; do
+    IFS='|' read -r d_token d_chat d_thread <<<"$dest"
+    [[ -n "$d_token" && -n "$d_chat" ]] || continue
+    URL="https://api.telegram.org/bot${d_token}/sendMessage"
+    args=(
+        --data-urlencode "chat_id=${d_chat}"
+        --data-urlencode "text=${MSG}"
+        --data-urlencode "disable_web_page_preview=true"
+    )
+    [[ -n "$d_thread" ]] && args+=( --data-urlencode "message_thread_id=${d_thread}" )
+    if curl -fsS --max-time 10 "${args[@]}" "$URL" >/dev/null 2>&1; then
+        any_ok=1
     fi
+done
+
+if (( any_ok )) && [[ "${SMART_MOTD_FORCE_RECAP:-}" != "1" ]]; then
+    mkdir -p "$SMART_MOTD_CACHE_DIR"
+    printf '%s\n' "$TODAY" > "$STATE"
 fi
 
 exit 0

@@ -189,7 +189,7 @@ EOF
         # config.conf — keep them in the right file.
         _is_secret() {
             case "$1" in
-                TELEGRAM_BOT_TOKEN|TELEGRAM_CHAT_ID|TELEGRAM_THREAD_ID) return 0 ;;
+                TELEGRAM_BOT_TOKEN|TELEGRAM_CHAT_ID|TELEGRAM_THREAD_ID|TELEGRAM_DESTS) return 0 ;;
                 *) return 1 ;;
             esac
         }

@@ -27,6 +27,10 @@ TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
 TELEGRAM_THREAD_ID=""
 TELEGRAM_ALERTS_IP_WHITELIST=()
+# Additional Telegram destinations beyond the primary (TOKEN/CHAT/THREAD)
+# tuple above. Each entry is "token|chat_id|thread_id" — useful for sending
+# the same alert to several chats (e.g. your own + a client's).
+TELEGRAM_DESTS=()
 
 # shellcheck disable=SC1090
 [[ -r "$SMART_MOTD_CONFIG" ]]  && . "$SMART_MOTD_CONFIG"
@@ -34,8 +38,18 @@ TELEGRAM_ALERTS_IP_WHITELIST=()
 [[ -r "$SMART_MOTD_SECRETS" ]] && . "$SMART_MOTD_SECRETS"
 
 [[ "$TELEGRAM_ALERTS_ENABLED" == "true" ]] || exit 0
-[[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]] || exit 0
 command -v curl >/dev/null 2>&1 || exit 0
+
+# Build the unified destination list: the legacy primary tuple plus any
+# extras in TELEGRAM_DESTS. Bail entirely if neither is configured.
+ALL_DESTS=()
+if [[ -n "$TELEGRAM_BOT_TOKEN" && -n "$TELEGRAM_CHAT_ID" ]]; then
+    ALL_DESTS+=("${TELEGRAM_BOT_TOKEN}|${TELEGRAM_CHAT_ID}|${TELEGRAM_THREAD_ID:-}")
+fi
+for d in "${TELEGRAM_DESTS[@]:-}"; do
+    [[ -n "$d" ]] && ALL_DESTS+=("$d")
+done
+[[ ${#ALL_DESTS[@]} -gt 0 ]] || exit 0
 
 USER_NAME="${PAM_USER:-unknown}"
 RHOST="${PAM_RHOST:-unknown}"
@@ -141,17 +155,23 @@ else
 🕐 ${TS}"
 fi
 
-# Send in a detached subshell so login doesn't wait for the HTTPS round-trip.
-(
-    URL="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage"
-    args=(
-        --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}"
-        --data-urlencode "text=${MSG}"
-        --data-urlencode "disable_web_page_preview=true"
-    )
-    [[ -n "$TELEGRAM_THREAD_ID" ]] && args+=( --data-urlencode "message_thread_id=${TELEGRAM_THREAD_ID}" )
-    curl -fsS --max-time 8 "${args[@]}" "$URL" >/dev/null 2>&1
-) &
-disown 2>/dev/null || true
+# Fire off one detached send per destination, so login doesn't wait for any
+# HTTPS round-trip and a slow / unreachable destination doesn't hold up the
+# others. Each subshell is independent.
+for dest in "${ALL_DESTS[@]}"; do
+    IFS='|' read -r d_token d_chat d_thread <<<"$dest"
+    [[ -n "$d_token" && -n "$d_chat" ]] || continue
+    (
+        URL="https://api.telegram.org/bot${d_token}/sendMessage"
+        args=(
+            --data-urlencode "chat_id=${d_chat}"
+            --data-urlencode "text=${MSG}"
+            --data-urlencode "disable_web_page_preview=true"
+        )
+        [[ -n "$d_thread" ]] && args+=( --data-urlencode "message_thread_id=${d_thread}" )
+        curl -fsS --max-time 8 "${args[@]}" "$URL" >/dev/null 2>&1
+    ) &
+    disown 2>/dev/null || true
+done
 
 exit 0

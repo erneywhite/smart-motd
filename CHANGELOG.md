@@ -3,6 +3,40 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.11.0]
+
+**Re-setup:** optional.
+
+### Added — multiple Telegram destinations
+- New `TELEGRAM_DESTS` array (in root-only `secrets.conf`)
+  beyond the primary `TELEGRAM_BOT_TOKEN` / `_CHAT_ID` /
+  `_THREAD_ID` tuple. Each entry is `BOT_TOKEN|CHAT_ID|
+  THREAD_ID` — useful for the typical managed-services case:
+  one alert needs to land in *both* your personal chat **and**
+  a client's chat (with a different bot).
+  ```bash
+  TELEGRAM_DESTS=(
+      '1234567:ABC...|-1001234567890|'          # group, no thread
+      '9999999:XYZ...|987654321|'               # personal chat
+      '4444444:DEF...|-1001112223334|42'        # group with topic 42
+  )
+  ```
+- Both `motd-ssh-alert` and `motd-recap` now iterate every
+  destination (primary + extras) in a detached background
+  subshell each — a slow or unreachable destination doesn't
+  hold up the others. For recap, the once-per-day state file
+  is only updated when at least one destination accepted, so
+  a single broken endpoint can't permanently mark the day as
+  sent.
+- Wizard adds a new "Additional Telegram destinations" list
+  page right after the alert-language picker. Help text shows
+  the format with examples for groups / personal / topics.
+- `smart-motd config get TELEGRAM_DESTS` correctly prints
+  one destination per line. `config set` refuses (it's an
+  array — use the wizard or `smart-motd edit`).
+- Fully backward compatible — existing single-destination
+  configs keep working without re-setup.
+
 ## [1.10.0]
 
 **Re-setup:** optional.

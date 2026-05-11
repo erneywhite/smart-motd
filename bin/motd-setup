@@ -50,6 +50,7 @@ TELEGRAM_ALERTS_LANG=""
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
 TELEGRAM_THREAD_ID=""
+TELEGRAM_DESTS=()
 TELEGRAM_ALERTS_IP_WHITELIST=()
 TELEGRAM_RECAP_ENABLED=false
 TELEGRAM_RECAP_HOUR=9
@@ -1017,6 +1018,35 @@ Pick 'Yes' to be re-prompted for bot token, chat ID and thread ID. Existing valu
         *)         TELEGRAM_ALERTS_LANG=en ;;
     esac
 
+    # Additional Telegram destinations beyond the primary token/chat
+    # configured above. Use case: a managed-services operator that wants
+    # every login alert to go to BOTH their personal chat and a client's
+    # chat (with a different bot token).
+    mapfile -t TELEGRAM_DESTS < <(wizard_list \
+        "$(_l "Additional Telegram destinations" "Дополнительные Telegram-получатели")" \
+        "$(_l \
+"Optional. Each line sends the alert to one more chat — useful when the same alert needs to land in several places (e.g. your personal chat AND a client's chat with a different bot).
+
+Format per entry:   BOT_TOKEN|CHAT_ID|THREAD_ID
+The thread part is optional — leave it empty for personal chats or groups without topics:
+
+  1234567:ABC...|-1001234567890|        (group, no thread)
+  1234567:ABC...|987654321|             (personal chat, your user ID)
+  9999999:XYZ...|-1001112223334|42      (group with topic id 42)
+
+Leave the list empty to send only to the primary destination configured above." \
+"Опционально. Каждая строка отправляет алерт ещё в один чат — полезно когда один алерт должен прилетать сразу в несколько мест (например в ваш личный чат И в чат клиента с другим ботом).
+
+Формат строки:   BOT_TOKEN|CHAT_ID|THREAD_ID
+Thread необязательный — оставьте пустым для ЛС или групп без topics:
+
+  1234567:ABC...|-1001234567890|        (группа, без thread)
+  1234567:ABC...|987654321|             (личный чат, ваш user ID)
+  9999999:XYZ...|-1001112223334|42      (группа с топиком 42)
+
+Пустой список = отправлять только в основной чат, настроенный выше.")" \
+        "${TELEGRAM_DESTS[@]}")
+
     # IP whitelist — silently skip alerts for known-good source IPs/ranges.
     mapfile -t TELEGRAM_ALERTS_IP_WHITELIST < <(wizard_list \
         "$(_l "Whitelist of source IPs (no alert when matched)" "Белый список IP (для них алерт НЕ шлётся)")" \
@@ -1209,6 +1239,7 @@ SMART_MOTD_SECRETS="${SMART_MOTD_CONFIG_DIR}/secrets.conf"
     echo "TELEGRAM_BOT_TOKEN=$(qstr "${TELEGRAM_BOT_TOKEN:-}")"
     echo "TELEGRAM_CHAT_ID=$(qstr "${TELEGRAM_CHAT_ID:-}")"
     echo "TELEGRAM_THREAD_ID=$(qstr "${TELEGRAM_THREAD_ID:-}")"
+    write_array TELEGRAM_DESTS "${TELEGRAM_DESTS[@]:-}"
 } >"$SMART_MOTD_SECRETS"
 chmod 0600 "$SMART_MOTD_SECRETS"
 
