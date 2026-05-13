@@ -253,7 +253,6 @@ Array values are read-only via `config set` (use `sudo smart-motd edit` or re-ru
 | RHEL / CentOS / Rocky / Alma / Fedora | `dnf` / `yum` | systemd timer → `/etc/motd` | ✅ Rocky 9, CentOS 10 |
 | openSUSE | `zypper` | systemd timer → `/etc/motd` | ✅ openSUSE Leap 15.6 |
 | Arch / Manjaro | `pacman` | systemd timer → `/etc/motd` | ✅ Arch |
-| Alpine | `apk` | cron → `/etc/motd` | best-effort |
 
 ---
 
