@@ -3,6 +3,23 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.12.4]
+
+**Re-setup:** not required.
+
+### Fixed — `motd-news.service` showing as failed in the auto-list
+- When `SERVICES_SHOW_FAILED=true`, Debian/Ubuntu hosts saw
+  `failed  motd-news.service` in the Services section. That's a
+  side effect of smart-motd's own install: we `chmod -x` every
+  script in `/etc/update-motd.d/`, so `motd-news.service` fails
+  the next time it tries to exec `/etc/update-motd.d/50-motd-news`.
+  It's expected, not a real problem — but it looked alarming.
+- `motd-news.service` is now always filtered out of the
+  failed-unit auto-list (built-in default, no config needed).
+- Added `SERVICES_FAILED_IGNORE=()` so you can suppress other
+  noisy units too. Glob patterns are supported, e.g.
+  `('systemd-fsck@*.service' 'phpsessionclean.service')`.
+
 ## [1.12.3]
 
 **Re-setup:** not required.

@@ -43,6 +43,7 @@ SSL_DOMAINS=()
 SSL_CERT_PATHS=()
 SSL_WARN_DAYS=14
 SERVICES_SHOW_FAILED=false
+SERVICES_FAILED_IGNORE=()
 SMART_DISKS=()
 DIRECTORIES_LIST=()
 LASTLOGIN_COUNT=3
@@ -1256,6 +1257,7 @@ TS=$(date '+%Y-%m-%d %H:%M:%S')
     echo "# ---- Services ----"
     write_array SERVICES_LIST "${SERVICES_LIST[@]}"
     echo "SERVICES_SHOW_FAILED=$SERVICES_SHOW_FAILED"
+    write_array SERVICES_FAILED_IGNORE "${SERVICES_FAILED_IGNORE[@]:-}"
     echo
     echo "# ---- Network ----"
     echo "NETWORK_SHOW_PUBLIC_IP=$NETWORK_SHOW_PUBLIC_IP"

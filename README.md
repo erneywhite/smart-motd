@@ -7,7 +7,7 @@ Pure bash, zero runtime dependencies beyond what your distro already ships, one 
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.12.3-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.12.4-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE%20%7C%20Alpine-blue)
 
 ---
@@ -315,6 +315,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 Highlights:
 
+- **v1.12.4** — `motd-news.service` no longer shows as failed in the failed-units auto-list — it fails as a side effect of smart-motd disabling the `update-motd.d` scripts, so it's filtered by default. New `SERVICES_FAILED_IGNORE=()` (glob-capable) suppresses other noisy units.
 - **v1.12.3** — Wizard now works with the Russian keyboard layout. Action keys like `c` (clear), `d` (delete), `a` (add) silently failed on Russian-JCUKEN before because `read -rsn1` only grabbed one byte of the two-byte Cyrillic UTF-8 sequence. New `_wiz_readkey` helper reads the full character and case patterns accept both Latin and Cyrillic equivalents (`c|C|с|С`, `a|A|ф|Ф`, etc.).
 - **v1.12.2** — List editor (used by SSL targets, network interfaces, custom services, etc.) rewritten as cursor-based. `[d]` now deletes the **highlighted** entry instead of the last one; `[e]` edits in place pre-filled with the current value; `[c]` clears all with a one-keystroke confirm. Arrow-key navigation with viewport scrolling for long lists.
 - **v1.12.1** — SSL auto-detect now finds certs in control-panel paths (aaPanel, ISPmanager, FastPanel, HestiaCP, Plesk, cPanel) and aaPanel's nginx configs (which live outside `/etc/nginx/`). The wizard's redundant "Auto-discover Let's Encrypt? Y/N" page is gone — one consolidated multi-select covers everything detected.

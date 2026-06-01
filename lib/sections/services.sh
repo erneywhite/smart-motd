@@ -13,9 +13,29 @@ section_services() {
 
     local failed_units=()
     if [[ "$show_failed" == "true" ]]; then
-        local unit
+        # Suppress known-noise units. motd-news.service is a built-in
+        # default: our installer chmod -x's the scripts in
+        # /etc/update-motd.d/, so motd-news.service fails the next time it
+        # tries to exec /etc/update-motd.d/50-motd-news. That failure is a
+        # side effect of smart-motd doing its job, not a real problem, so
+        # it shouldn't show up here. Operators can suppress more units
+        # (glob patterns allowed) via SERVICES_FAILED_IGNORE in config.conf.
+        local ignore=( 'motd-news.service' "${SERVICES_FAILED_IGNORE[@]:-}" )
+        local unit ign skip
         while IFS= read -r unit; do
-            [[ -n "$unit" ]] && failed_units+=("$unit")
+            [[ -n "$unit" ]] || continue
+            skip=0
+            for ign in "${ignore[@]}"; do
+                [[ -z "$ign" ]] && continue
+                # Unquoted $ign on the right of case = glob match, so entries
+                # like 'systemd-fsck@*.service' work as well as exact names.
+                # shellcheck disable=SC2254
+                case "$unit" in
+                    $ign) skip=1; break ;;
+                esac
+            done
+            (( skip )) && continue
+            failed_units+=("$unit")
         done < <(systemctl list-units --state=failed --no-legend --plain --no-pager 2>/dev/null \
                  | awk '{print $1}')
     fi
