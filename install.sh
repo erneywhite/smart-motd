@@ -187,9 +187,22 @@ if [[ -r /etc/os-release ]]; then
         *" rhel "*|*" fedora "*|*" centos "*|*" rocky "*|*" almalinux "*|*" ol "*) DISTRO_FAMILY="rhel" ;;
         *" arch "*|*" manjaro "*) DISTRO_FAMILY="arch" ;;
         *" suse "*|*" opensuse "*|*" opensuse-leap "*|*" opensuse-tumbleweed "*) DISTRO_FAMILY="suse" ;;
-        *" alpine "*) DISTRO_FAMILY="alpine" ;;
     esac
 fi
+
+# Alpine is not supported. It ships busybox login without PAM (so the SSH
+# login-alert hook can't attach) and OpenRC instead of systemd (so the cache
+# and render timers don't apply). Real-world testing showed the install
+# doesn't come together cleanly, so refuse up front rather than leave a
+# half-working setup behind.
+if [[ "$DISTRO_ID" == "alpine" || -f /etc/alpine-release ]]; then
+    err "Alpine Linux is not supported by smart-motd."
+    note "Alpine uses busybox login (no PAM) and OpenRC (no systemd), which the"
+    note "login hook and timers rely on. Supported: Debian, Ubuntu, RHEL / CentOS /"
+    note "Rocky / Alma, Fedora, Arch, openSUSE."
+    exit 1
+fi
+
 ok "Detected ${C_BOLD}${DISTRO_ID}${C_RESET} ${DISTRO_VERSION}${DISTRO_VERSION:+ }${C_DIM}(family: ${DISTRO_FAMILY})${C_RESET}"
 
 # ---------- ensure deps ----------
@@ -204,7 +217,6 @@ if [[ ${#NEED[@]} -gt 0 ]]; then
         rhel)   (command -v dnf >/dev/null && dnf install -y -q "${NEED[@]}" >/dev/null) || yum install -y -q "${NEED[@]}" >/dev/null ;;
         suse)   zypper --non-interactive --quiet install "${NEED[@]}" >/dev/null ;;
         arch)   pacman -Sy --noconfirm --quiet "${NEED[@]}" >/dev/null ;;
-        alpine) apk add --no-cache --quiet "${NEED[@]}" >/dev/null ;;
         *) warn "Cannot auto-install on this distro; please install manually: ${NEED[*]}" ;;
     esac
     ok "Prerequisites installed"

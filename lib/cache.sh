@@ -22,7 +22,7 @@ cache_write() {
     mv -f "$tmp" "${SMART_MOTD_CACHE_DIR}/${name}"
 }
 
-# ---- updates available (apt/dnf/yum/zypper/pacman/apk) ----
+# ---- updates available (apt/dnf/yum/zypper/pacman) ----
 cache_update_packages() {
     local count=0 security=0
     case "$DISTRO_FAMILY" in
@@ -57,11 +57,6 @@ cache_update_packages() {
                 count=$(checkupdates 2>/dev/null | wc -l)
             elif have pacman; then
                 count=$(pacman -Qu 2>/dev/null | wc -l)
-            fi
-            ;;
-        alpine)
-            if have apk; then
-                count=$(apk version -l '<' 2>/dev/null | tail -n +2 | wc -l)
             fi
             ;;
     esac

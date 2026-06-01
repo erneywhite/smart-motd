@@ -3,6 +3,25 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.12.5]
+
+**Re-setup:** not required.
+
+### Removed — Alpine Linux support
+- Alpine was only ever "best-effort", and real-world testing
+  confirmed the install doesn't come together on it: Alpine
+  ships **busybox login without PAM** (so the SSH login-alert
+  hook has nothing to attach to) and **OpenRC instead of
+  systemd** (so the cache and render timers don't apply).
+- The installer now detects Alpine (`/etc/os-release` ID or
+  `/etc/alpine-release`) and exits early with a clear message
+  instead of leaving a half-working setup behind.
+- Dropped the `apk` prerequisite branch, the `alpine`
+  distro-family arm in both the installer and `lib/common.sh`,
+  and the `apk version` package-count path in `lib/cache.sh`.
+- Supported distros are now Debian, Ubuntu, RHEL / CentOS /
+  Rocky / Alma, Fedora, Arch and openSUSE.
+
 ## [1.12.4]
 
 **Re-setup:** not required.

@@ -49,7 +49,7 @@ _color_init() {
 _color_init
 
 # ---------- distro detection ----------
-# Sets DISTRO_ID (e.g. ubuntu), DISTRO_FAMILY (debian|rhel|arch|suse|alpine|other)
+# Sets DISTRO_ID (e.g. ubuntu), DISTRO_FAMILY (debian|rhel|arch|suse|other)
 
 detect_distro() {
     DISTRO_ID="unknown"
@@ -67,7 +67,6 @@ detect_distro() {
             *" arch "*|*" manjaro "*) DISTRO_FAMILY="arch" ;;
             *" suse "*|*" opensuse "*|*" opensuse-leap "*|*" opensuse-tumbleweed "*)
                 DISTRO_FAMILY="suse" ;;
-            *" alpine "*) DISTRO_FAMILY="alpine" ;;
         esac
     fi
 
