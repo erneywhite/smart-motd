@@ -31,6 +31,7 @@ W e l c o m e   t o   y o u r   s e r v e r
  Load       : 0.05, 0.07, 0.02
  Memory     : 1238 / 32088 MB
  Disk /     : 11G / 1007G (2% used)
+ Disk sdb1  : 273G / 492G (56% used)
  Sessions   : 1 active login(s)
 -------------------------------------------------------
 ------------------ Package updates --------------------
@@ -63,7 +64,7 @@ W e l c o m e   t o   y o u r   s e r v e r
    redis                       Up 12 hours
 -------------------------------------------------------
 
- ↑ smart-motd v1.13.0 available (you have v1.12.3) — run sudo smart-motd upgrade
+ ↑ smart-motd v1.14.0 available (you have v1.13.3) — run sudo smart-motd upgrade
 ```
 
 Colors are real — accent on headings, green for healthy, yellow for warnings, red for problems. Twenty visual themes and thirteen color palettes ship in the box; pick during setup with live preview.
@@ -81,7 +82,7 @@ The installer:
 1. Detects your distro and installs missing prerequisites (`curl`, `tar`, `awk`).
 2. Drops the runtime into `/usr/local/lib/smart-motd/` and a CLI at `/usr/local/bin/smart-motd`.
 3. Wires into the right hook for your distro:
-   - **Debian / Ubuntu** — `/etc/update-motd.d/01-smart-motd`. Every other script in `/etc/update-motd.d/` and `/etc/motd.d/` is disabled (`chmod -x`) so the distro's default `landscape-sysinfo`, `motd-news`, ESM-announce, etc. don't leak under our banner.
+   - **Debian / Ubuntu** — `/etc/update-motd.d/01-smart-motd`. Every other script in `/etc/update-motd.d/` and `/etc/motd.d/` is disabled (`chmod -x`) so the distro's default `landscape-sysinfo`, `motd-news`, ESM-announce, etc. don't leak under our banner. `motd-news.timer` is also masked — with its script disabled the unit would otherwise fail on every fire and sit in `systemctl --failed` forever. Uninstall reverses both.
    - **Everything else** — a systemd timer that renders the banner into `/etc/motd` every 5 minutes (cron fallback if no systemd).
 4. Sets up a 5-minute systemd timer (`smart-motd-cache.timer`) to refresh expensive data sources in the background.
 5. Drops you into the interactive wizard so you can pick sections, theme, and palette.
@@ -146,6 +147,7 @@ Every section is independent — toggle on/off in the wizard's first page or dir
 | **Directories** | Custom labeled paths with sizes; entries flagged `\|backup` also show the age of the newest file inside, color-coded by staleness |
 | **Recent logins** | Last N successful SSH logins |
 | **Weather** | One-line `wttr.in` summary; auto-detects your city via IP *(off by default)* |
+| **Footer** | Custom closing line under the banner |
 | **Telegram SSH alerts** | Not visible in the banner — fires a Telegram message on every SSH login *(off by default; see below)* |
 | **Upgrade notice** | One-line `↑ smart-motd vX.Y.Z available` at the bottom when a newer release is on GitHub. Hidden when up-to-date |
 
@@ -210,7 +212,7 @@ Optional — when enabled, fires a Telegram message on every successful SSH logi
 
 ## How caching keeps login fast
 
-The on-login generator has to be fast — under ~50 ms even on a saturated host. Some checks aren't naturally fast:
+The on-login generator has to be fast — you feel every millisecond between `ssh` and a shell prompt. Some checks aren't naturally fast:
 
 - counting pending package updates (apt / dnf can take seconds)
 - resolving the public IP (one HTTPS request)
@@ -243,13 +245,23 @@ sudo smart-motd config set HEADER_TEXT "production"
 
 Array values are read-only via `config set` (use `sudo smart-motd edit` or re-run the wizard). Secret keys (`TELEGRAM_BOT_TOKEN`, etc.) live in `/etc/smart-motd/secrets.conf` (mode `0600`) and require root to read or write.
 
+The knobs people reach for most often:
+
+```bash
+SYSTEM_DISK_AUTO=true          # list every local disk; false = fixed list below
+SYSTEM_DISK_PATHS=('/mnt/nas') # extra mountpoints; bypasses every filter
+SYSTEM_DISK_EXCLUDE=('/srv/*') # hide mountpoints from the auto list (globs ok)
+SERVICES_SHOW_FAILED=true      # also surface any systemd unit in 'failed'
+SSL_WARN_DAYS=14               # days before expiry that turn a cert yellow
+```
+
 ---
 
 ## Distro support
 
 | Family | Install hook | MOTD method | Tested |
 |---|---|---|---|
-| Debian / Ubuntu | `apt-get` | `/etc/update-motd.d/` + `/run/motd.dynamic` refresh | ✅ Ubuntu 22.04, Debian 12 |
+| Debian / Ubuntu | `apt-get` | `/etc/update-motd.d/` + `/run/motd.dynamic` refresh | ✅ Ubuntu 22.04 / 24.04, Debian 12 / 13 |
 | RHEL / CentOS / Rocky / Alma / Fedora | `dnf` / `yum` | systemd timer → `/etc/motd` | ✅ Rocky 9, CentOS 10 |
 | openSUSE | `zypper` | systemd timer → `/etc/motd` | ✅ openSUSE Leap 15.6 |
 | Arch / Manjaro | `pacman` | systemd timer → `/etc/motd` | ✅ Arch |
@@ -271,7 +283,7 @@ Array values are read-only via `config set` (use `sudo smart-motd edit` or re-ru
 sudo smart-motd uninstall
 ```
 
-Removes the install dir, the CLI, systemd units, cron entries, and the `update-motd.d` hook. Re-enables every script in `/etc/update-motd.d/` and `/etc/motd.d/` that the installer disabled, so the distro's original banner is fully restored. Leaves `/etc/smart-motd/` in place so you can re-install without losing your config — wipe it manually if you want a clean slate.
+Removes the install dir, the CLI, systemd units, cron entries, the PAM hook and the `update-motd.d` hook. Re-enables every script in `/etc/update-motd.d/` and `/etc/motd.d/` that the installer disabled and unmasks `motd-news`, so the distro's original banner is fully restored. Leaves `/etc/smart-motd/` in place so you can re-install without losing your config — wipe it manually if you want a clean slate.
 
 ---
 
