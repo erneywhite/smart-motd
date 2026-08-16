@@ -332,6 +332,22 @@ EOF
             if (( disabled_count > 0 )); then
                 ok "Disabled ${disabled_count} default Ubuntu MOTD script(s)"
             fi
+
+            # Mask motd-news outright rather than only chmod -x'ing its script.
+            # Its timer keeps firing and exec'ing /etc/update-motd.d/50-motd-news,
+            # which we just made non-executable — so the unit lands in 'failed'
+            # and stays there. smart-motd hides it from its own Services list,
+            # but `systemctl --failed` and any external monitoring still sees a
+            # permanently failed unit that we caused. motd-uninstall unmasks it.
+            if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
+                if systemctl list-unit-files 2>/dev/null | grep -q '^motd-news\.'; then
+                    systemctl stop motd-news.timer motd-news.service >/dev/null 2>&1 || true
+                    systemctl reset-failed motd-news.service >/dev/null 2>&1 || true
+                    if systemctl mask motd-news.timer motd-news.service >/dev/null 2>&1; then
+                        ok "Masked motd-news (it would otherwise sit in 'failed')"
+                    fi
+                fi
+            fi
         fi
         # Truncate static /etc/motd so the second pam_motd line in
         # /etc/pam.d/sshd doesn't add anything below our banner.

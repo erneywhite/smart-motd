@@ -49,6 +49,15 @@ if [[ -d /etc/motd.d ]]; then
     done
 fi
 
+# Undo the motd-news mask that install.sh applies on Debian/Ubuntu. Its script
+# is executable again by the loop above, so the unit can go back to working.
+if command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
+    if systemctl is-enabled motd-news.timer 2>/dev/null | grep -q masked; then
+        systemctl unmask motd-news.timer motd-news.service >/dev/null 2>&1 || true
+        systemctl start motd-news.timer >/dev/null 2>&1 || true
+    fi
+fi
+
 # cron entries
 if command -v crontab >/dev/null 2>&1; then
     crontab -l 2>/dev/null | grep -v 'smart-motd\|motd-cache-update' | crontab - 2>/dev/null || true

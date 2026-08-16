@@ -7,7 +7,7 @@ Pure bash, zero runtime dependencies beyond what your distro already ships, one 
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.13.1-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.13.2-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE-blue)
 
 ---
@@ -315,6 +315,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 Highlights:
 
+- **v1.13.2** — Security section no longer paints a green "0 banned across 0 jail(s)" when fail2ban is running with **no jails configured** — that's now a red warning, since the host is unprotected. SMART keeps the `-d TYPE` from `smartctl --scan`, so drives in USB enclosures (JMicron & co.) stop vanishing from the list, and a disk is no longer dropped just because `smartctl` exits non-zero — which it does precisely when a disk is failing. The installer now masks `motd-news` instead of leaving it permanently in `failed`.
 - **v1.13.1** — Only real disks are listed: a row shows up when its source is an actual block device, which drops `/boot` and FUSE mounts like Proxmox's `/etc/pve` that a filesystem-type blacklist kept missing. Rows are labeled by device (`Disk sdb1`, `Disk nvme0n1p1`) so they line up with `lsblk` and the SMART section.
 - **v1.13.0** — Disks are detected automatically: System status now lists every local filesystem, and a disk you mount later appears at the next login without re-running the wizard. Pseudo filesystems are filtered by type (snaps, docker layers, tmpfs), disks mounted twice are deduplicated, and network mounts are skipped so a stale NFS server can't hang the login banner. Panel-style mountpoints (`/srv/dev-disk-by-uuid-…`) are labeled by device (`Disk sdb1`), and the label column widens so long names like `Disk nvme0n1p2` fit in full. Also fixed the wizard's disk picker, which detected *nothing* — it used `df -P --output=target`, a combination GNU coreutils rejects outright.
 - **v1.12.5** — Dropped Alpine Linux support. It was best-effort only and real-world testing confirmed it doesn't work cleanly (busybox login has no PAM for the alert hook; OpenRC instead of systemd for the timers). The installer now refuses on Alpine with a clear message instead of half-installing.

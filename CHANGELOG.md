@@ -3,6 +3,57 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.13.2]
+
+**Re-setup:** not required.
+
+### Fixed — fail2ban with no jails rendered green
+- A host running fail2ban with **zero jails configured** showed:
+  ```
+   SSH fails  ▸ 3886 in last 24h
+   fail2ban   ▸ 0 banned across 0 jail(s)
+  ```
+  in **green** — the banner reported everything was fine on a box
+  where brute-force attempts were entirely unmitigated. The jail
+  list comes back as whitespace in that state, which passed the
+  section's "is it non-empty" test while counting zero entries.
+- Now reported as `running but NO jails configured` in red, and
+  the section no longer hides itself when fail2ban is up but
+  unconfigured on an otherwise quiet host.
+
+### Fixed — disks behind a USB bridge vanished from SMART
+- `smartctl --scan` names the driver each device needs:
+  ```
+  /dev/sda -d sntjmicron # /dev/sda [USB NVMe JMicron], NVMe device
+  ```
+  The scan output was parsed for the device path only and the
+  `-d TYPE` was thrown away, so drives in a USB enclosure
+  (JMicron, ASMedia, SunplusIT, Realtek) were queried plainly,
+  failed with `Read NVMe Identify Controller failed: scsi error
+  unsupported field in scsi command`, and silently disappeared
+  from the section. The type is now carried through.
+- `SMART_DISKS` entries accept the same `device|type` form for
+  enclosures the scan can't work out on its own.
+
+### Fixed — a failing disk could be hidden from SMART
+- The per-disk query bailed on any non-zero exit from `smartctl`.
+  That status is a **bitmask**, and bits are set for "disk is
+  failing" and "prefail attribute below threshold" as well as for
+  real errors — so the check dropped precisely the disks worth
+  showing. Rows are now judged on whether the output is usable.
+
+### Changed — motd-news is masked instead of left failing
+- The installer disables every script in `/etc/update-motd.d/`,
+  which makes `motd-news.service` fail the next time its timer
+  fires and tries to exec the now non-executable
+  `/etc/update-motd.d/50-motd-news`. v1.12.4 hid that from
+  smart-motd's own Services list, but `systemctl --failed` and any
+  external monitoring still saw a permanently failed unit that we
+  caused.
+- The unit and its timer are now stopped and masked at install
+  time (Debian/Ubuntu, systemd hosts only), and `smart-motd
+  uninstall` unmasks them again.
+
 ## [1.13.1]
 
 **Re-setup:** not required.

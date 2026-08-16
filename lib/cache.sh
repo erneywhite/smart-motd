@@ -451,24 +451,57 @@ cache_update_directories() {
 cache_update_smart() {
     have smartctl || { cache_write "smart" ""; return; }
 
+    # Entries are "device|smartctl-type"; the type may be empty (auto-detect).
+    #
+    # `smartctl --scan` prints the driver a device needs alongside its path:
+    #
+    #   /dev/sda -d sntjmicron # /dev/sda [USB NVMe JMicron], NVMe device
+    #   /dev/nvme0 -d nvme     # /dev/nvme0, NVMe device
+    #
+    # That -d matters. Drives behind a USB bridge (JMicron, SunplusIT, ASMedia,
+    # Realtek enclosures) only answer when addressed with the right driver;
+    # querying them plainly fails with "Read NVMe Identify Controller failed:
+    # scsi error unsupported field in scsi command" and the disk silently
+    # disappeared from the section. Keep the type and pass it through.
     local disks=()
     if [[ "${SMART_ENABLED:-auto}" == "auto" ]] || [[ ${#SMART_DISKS[@]} -eq 0 ]]; then
-        # auto-detect via smartctl
         local d
         while IFS= read -r d; do
             [[ -n "$d" ]] && disks+=("$d")
-        done < <(smartctl --scan 2>/dev/null | awk '{print $1}' | head -20)
+        done < <(smartctl --scan 2>/dev/null \
+            | awk '$1 ~ /^\/dev\// {
+                type = ($2 == "-d" && $3 != "") ? $3 : ""
+                print $1 "|" type
+            }' | head -20)
     else
-        disks=("${SMART_DISKS[@]}")
+        # Operator-supplied entries are plain device paths, but allow the same
+        # "device|type" form for enclosures the scan can't work out on its own.
+        local d
+        for d in "${SMART_DISKS[@]}"; do
+            [[ -n "$d" ]] || continue
+            [[ "$d" == *"|"* ]] && disks+=("$d") || disks+=("$d|")
+        done
     fi
 
-    local lines="" dev
-    for dev in "${disks[@]}"; do
+    local lines="" entry dev dtype
+    for entry in "${disks[@]}"; do
+        dev="${entry%%|*}"
+        dtype="${entry#*|}"
         local info temp health model
-        info=$(smartctl -i -A -H "$dev" 2>/dev/null) || continue
+        local -a sm_args=(-i -A -H)
+        [[ -n "$dtype" ]] && sm_args+=(-d "$dtype")
+        # Deliberately NOT gated on smartctl's exit status. That status is a
+        # bitmask, and bits are set for "disk is failing" / "prefail attribute
+        # below threshold" as well as for real errors — so `|| continue` here
+        # used to drop exactly the disks worth showing. Judge by whether the
+        # output is usable instead.
+        info=$(smartctl "${sm_args[@]}" "$dev" 2>/dev/null)
+        [[ -n "$info" ]] || continue
         model=$(printf '%s\n' "$info" | awk -F': *' '/Device Model|Model Number/ {print $2; exit}')
-        [[ -z "$model" ]] && model="$(basename "$dev")"
         health=$(printf '%s\n' "$info" | awk -F': *' '/SMART overall-health|SMART Health Status/ {print $2; exit}')
+        # Nothing identifiable came back (device didn't answer at all).
+        [[ -z "$model" && -z "$health" ]] && continue
+        [[ -z "$model" ]] && model="$(basename "$dev")"
         [[ -z "$health" ]] && health="?"
         temp=$(printf '%s\n' "$info" | awk '/Temperature_Celsius|Current Drive Temperature|Temperature:/ {for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/ && $i+0 > 0 && $i+0 < 120) { print $i; exit }}')
         [[ -z "$temp" ]] && temp="?"
@@ -482,7 +515,7 @@ cache_update_smart() {
 # journalctl --since 24h with thousands of matches can take 1-2s on busy hosts;
 # fail2ban-client status is dbus-ish and similarly slow.
 cache_update_security() {
-    local failed=0 jails="" banned_total=0
+    local failed=0 jails="" banned_total=0 f2b_installed=0
 
     if have journalctl; then
         failed=$(journalctl _COMM=sshd --since "24 hours ago" --no-pager 2>/dev/null \
@@ -498,8 +531,17 @@ cache_update_security() {
     failed="${failed:-0}"
 
     if have fail2ban-client; then
+        # Only counts as "installed" if the daemon actually answers — the
+        # client binary alone can be left behind by a package that's no longer
+        # running.
+        if fail2ban-client ping >/dev/null 2>&1; then
+            f2b_installed=1
+        fi
+        # Trailing whitespace/tabs survive here when no jails are configured,
+        # which is why the section counts entries rather than testing for an
+        # empty string.
         jails=$(fail2ban-client status 2>/dev/null | awk -F': *' '/Jail list/ {print $2}' \
-            | tr ',' '\n' | sed 's/^ *//;s/ *$//' | tr '\n' ' ' | sed 's/ *$//')
+            | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '\n' ' ' | sed 's/[[:space:]]*$//')
         local jail count
         for jail in $jails; do
             count=$(fail2ban-client status "$jail" 2>/dev/null | awk -F': *' '/Currently banned/ {print $2}' | tr -d ' \t')
@@ -510,6 +552,7 @@ cache_update_security() {
 
     {
         printf 'FAILED_SSH=%s\n' "${failed:-0}"
+        printf 'FAIL2BAN_INSTALLED=%s\n' "${f2b_installed:-0}"
         printf 'FAIL2BAN_JAILS=%s\n' "$(qstr "$jails")"
         printf 'FAIL2BAN_BANNED=%s\n' "${banned_total:-0}"
     } | _cache_kv_write security
