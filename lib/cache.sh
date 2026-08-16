@@ -515,7 +515,7 @@ cache_update_smart() {
 # journalctl --since 24h with thousands of matches can take 1-2s on busy hosts;
 # fail2ban-client status is dbus-ish and similarly slow.
 cache_update_security() {
-    local failed=0 jails="" banned_total=0 f2b_installed=0
+    local failed=0 jails="" banned_total=0 f2b_present=0 f2b_running=0
 
     if have journalctl; then
         failed=$(journalctl _COMM=sshd --since "24 hours ago" --no-pager 2>/dev/null \
@@ -531,11 +531,14 @@ cache_update_security() {
     failed="${failed:-0}"
 
     if have fail2ban-client; then
-        # Only counts as "installed" if the daemon actually answers — the
-        # client binary alone can be left behind by a package that's no longer
-        # running.
+        # Three states worth telling apart, because each means something
+        # different for the operator:
+        #   not present          -> fail2ban isn't part of this host's setup
+        #   present, no answer   -> package installed but the daemon is down
+        #   answering            -> ask it about jails
+        f2b_present=1
         if fail2ban-client ping >/dev/null 2>&1; then
-            f2b_installed=1
+            f2b_running=1
         fi
         # Trailing whitespace/tabs survive here when no jails are configured,
         # which is why the section counts entries rather than testing for an
@@ -552,7 +555,8 @@ cache_update_security() {
 
     {
         printf 'FAILED_SSH=%s\n' "${failed:-0}"
-        printf 'FAIL2BAN_INSTALLED=%s\n' "${f2b_installed:-0}"
+        printf 'FAIL2BAN_PRESENT=%s\n' "${f2b_present:-0}"
+        printf 'FAIL2BAN_RUNNING=%s\n' "${f2b_running:-0}"
         printf 'FAIL2BAN_JAILS=%s\n' "$(qstr "$jails")"
         printf 'FAIL2BAN_BANNED=%s\n' "${banned_total:-0}"
     } | _cache_kv_write security

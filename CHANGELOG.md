@@ -3,6 +3,40 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.13.3]
+
+**Re-setup:** not required.
+
+### Fixed — v1.13.2 hid the fail2ban line instead of warning
+- v1.13.2 gated the whole line on `fail2ban-client ping`, so a
+  host where the package is installed but the **daemon isn't
+  running** showed nothing at all — strictly worse than the
+  misleading green line it replaced, since the state is
+  security-relevant and now went unmentioned.
+- The three states are now told apart properly:
+  | state | line |
+  |---|---|
+  | not installed | *(no line)* |
+  | installed, daemon down | `installed but not running` (yellow) |
+  | running, no jails | `running but NO jails configured` (red) |
+  | running, N jails | `X banned across N jail(s)` (green/yellow) |
+- "Installed but not running" is deliberately a yellow notice
+  rather than a red alarm: it's ambiguous. It can mean the daemon
+  was forgotten after a reboot, or that something else took over
+  brute-force protection (a hosting panel's own module, for
+  instance).
+- Cache keys are now `FAIL2BAN_PRESENT` / `FAIL2BAN_RUNNING`,
+  replacing v1.13.2's single `FAIL2BAN_INSTALLED`.
+
+### Note — SMART over USB bridges
+- v1.13.2 made smart-motd pass the `-d TYPE` that
+  `smartctl --scan` recommends, which is required for drives in a
+  USB enclosure. Some bridges still refuse the passthrough
+  entirely and answer `Read NVMe Identify Controller failed`
+  whatever driver is used — that's a limitation of the enclosure
+  firmware, not something a MOTD can work around. Those devices
+  are skipped cleanly rather than rendering a row of `?`.
+
 ## [1.13.2]
 
 **Re-setup:** not required.
