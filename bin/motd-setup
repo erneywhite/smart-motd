@@ -34,7 +34,10 @@ WARNING_LINES=(
     "All connections are logged and monitored."
     "Unauthorized use may be subject to criminal prosecution."
 )
-SYSTEM_DISK_PATHS=("/")
+SYSTEM_DISK_PATHS=()
+SYSTEM_DISK_AUTO=true
+SYSTEM_DISK_EXCLUDE=()
+SYSTEM_DISK_MAX=10
 SERVICES_LIST=()
 NETWORK_SHOW_PUBLIC_IP=true
 NETWORK_INTERFACES=()
@@ -555,7 +558,30 @@ fi
 
 configure_disks_page() {
     local detected=() seen mp existing pre dup mp_entry multi=() selected_mps=()
+
+    if wizard_yesno \
+        "$(_l "Detect disks automatically?" "Определять диски автоматически?")" \
+        "$(_l \
+"Recommended. Every local filesystem is listed in System status, and a disk you mount later shows up on the next login — no need to re-run this wizard. Pseudo filesystems (tmpfs, snap, docker layers) are filtered out automatically.
+
+Answer No to pick a fixed list of mountpoints instead." \
+"Рекомендуется. В System status попадают все локальные файловые системы, а диск, примонтированный позже, появится при следующем входе — визард перезапускать не нужно. Псевдо-ФС (tmpfs, snap, docker-слои) отсекаются автоматически.
+
+Ответьте Нет, чтобы задать фиксированный список точек монтирования.")" \
+        "$([[ "$SYSTEM_DISK_AUTO" == "true" ]] && echo y || echo n)"; then
+        SYSTEM_DISK_AUTO=true
+        # Existing SYSTEM_DISK_PATHS entries are kept: they're deduplicated
+        # against the auto-detected list at render time, and they're the only
+        # way to pin a network mount that the local-only sweep can't see.
+        return
+    fi
+    SYSTEM_DISK_AUTO=false
+
     # Detect "real" mountpoints — skip pseudo-fs and small ones.
+    # NOTE: `df -P --output=...` is rejected by GNU coreutils ("options -P and
+    # --output are mutually exclusive"), which silently produced an EMPTY list
+    # here before v1.13.0 — the page then showed nothing at all. Parse the
+    # normal -PT output instead and filter on the fstype column.
     while IFS= read -r mp; do
         [[ -z "$mp" ]] && continue
         case "$mp" in
@@ -566,18 +592,28 @@ configure_disks_page() {
             [[ "$existing" == "$mp" ]] && seen=1 && break
         done
         (( seen )) || detected+=("$mp")
-    done < <(df -P --output=target 2>/dev/null | tail -n +2 | sort -u)
+    done < <(timeout 5 df -PT 2>/dev/null | awk '
+        NR > 1 && $2 !~ /^(tmpfs|devtmpfs|squashfs|overlay|aufs|efivarfs|ramfs|autofs|nsfs|fusectl|configfs|debugfs|tracefs|mqueue|hugetlbfs|devpts|proc|sysfs|cgroup|cgroup2|pstore|bpf|binfmt_misc|securityfs)$/ {
+            mp = $7
+            for (i = 8; i <= NF; i++) mp = mp " " $i
+            print mp
+        }' | sort -u)
 
     # Build multiselect: pre-check anything already in SYSTEM_DISK_PATHS.
+    # SYSTEM_DISK_PATHS can legitimately be empty now (auto mode is the
+    # default), so expand with :- for bash < 4.4 under `set -u` — and skip the
+    # single empty element that produces.
     for mp in "${detected[@]}"; do
         pre=0
-        for existing in "${SYSTEM_DISK_PATHS[@]}"; do
+        for existing in "${SYSTEM_DISK_PATHS[@]:-}"; do
+            [[ -z "$existing" ]] && continue
             [[ "$existing" == "$mp" ]] && pre=1 && break
         done
         multi+=("${pre}${mp}")
     done
     # Surface previously-configured paths not detected (rare — mountpoint went away)
-    for existing in "${SYSTEM_DISK_PATHS[@]}"; do
+    for existing in "${SYSTEM_DISK_PATHS[@]:-}"; do
+        [[ -z "$existing" ]] && continue
         dup=0
         for mp in "${detected[@]}"; do
             [[ "$mp" == "$existing" ]] && dup=1 && break
@@ -1252,7 +1288,10 @@ TS=$(date '+%Y-%m-%d %H:%M:%S')
     write_array WARNING_LINES "${WARNING_LINES[@]}"
     echo
     echo "# ---- System status ----"
-    write_array SYSTEM_DISK_PATHS "${SYSTEM_DISK_PATHS[@]}"
+    echo "SYSTEM_DISK_AUTO=$SYSTEM_DISK_AUTO"
+    write_array SYSTEM_DISK_PATHS "${SYSTEM_DISK_PATHS[@]:-}"
+    write_array SYSTEM_DISK_EXCLUDE "${SYSTEM_DISK_EXCLUDE[@]:-}"
+    echo "SYSTEM_DISK_MAX=$SYSTEM_DISK_MAX"
     echo
     echo "# ---- Services ----"
     write_array SERVICES_LIST "${SERVICES_LIST[@]}"

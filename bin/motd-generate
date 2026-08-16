@@ -12,7 +12,10 @@ HEADER_SPACED=true
 WELCOME_TITLE=""
 WELCOME_LINES=()
 WARNING_LINES=()
-SYSTEM_DISK_PATHS=("/")
+SYSTEM_DISK_PATHS=()
+SYSTEM_DISK_AUTO=true
+SYSTEM_DISK_EXCLUDE=()
+SYSTEM_DISK_MAX=10
 SERVICES_LIST=()
 SERVICES_SHOW_FAILED=false
 SERVICES_FAILED_IGNORE=()
@@ -91,6 +94,14 @@ for f in "${SMART_MOTD_PREFIX}"/lib/sections/*.sh; do
     # shellcheck disable=SC1090
     . "$f"
 done
+
+# Enumerate disks before anything renders. The disk labels decide the width of
+# the shared key/value column (a host with "Disk nvme0n1p2" needs more room
+# than one with "Disk /"), and every section has to agree on that width or the
+# banner comes out ragged.
+if declare -F disks_prepare >/dev/null; then
+    disks_prepare
+fi
 
 # Dispatch in configured order. A section function may return early if disabled.
 for sec in "${SECTION_ORDER[@]}"; do

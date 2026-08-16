@@ -374,10 +374,17 @@ section_thick_rule() {
 }
 
 # Print a labeled line: "  Label    : value"
+# Label column width. Defaults to 10, which fits every fixed label we ship
+# ("Containers" is the longest). The disk enumeration raises it when a host
+# has long device names (e.g. "Disk nvme0n1p2") so that every section stays
+# aligned with every other — see disks_prepare() in sections/system.sh, which
+# motd-generate calls before rendering anything.
+SMART_MOTD_KV_WIDTH="${SMART_MOTD_KV_WIDTH:-10}"
+
 kv() {
     local label="$1" value="$2" color="${3:-}"
     local sep="${THEME_KV_SEPARATOR:-:}"
-    printf " %-10s %s %s%s%s\n" "$label" "$sep" "$color" "$value" "${C_RESET:-}"
+    printf " %-*s %s %s%s%s\n" "${SMART_MOTD_KV_WIDTH:-10}" "$label" "$sep" "$color" "$value" "${C_RESET:-}"
 }
 
 # Internal: repeat a single character N times. Handles multi-byte UTF-8 chars

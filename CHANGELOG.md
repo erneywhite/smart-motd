@@ -3,6 +3,69 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.13.0]
+
+**Re-setup:** optional.
+
+### Fixed — the disk picker in the wizard detected nothing at all
+- `motd-setup` built its mountpoint list with
+  `df -P --output=target`, but GNU coreutils rejects that
+  combination outright:
+  ```
+  df: options -P and --output are mutually exclusive
+  ```
+  The error went to `/dev/null`, so the list came back **empty**
+  and the page only ever offered whatever was already in the
+  config. That's why mounting a new disk and re-running the
+  wizard didn't help — nothing was ever discovered, not even `/`.
+- The detection now parses `df -PT` and filters on the filesystem
+  *type* column.
+
+### Added — disks are detected automatically (`SYSTEM_DISK_AUTO`)
+- System status now lists **every local filesystem** by default.
+  Mount a disk today and it shows up at the next login — no
+  re-running the wizard, no config edit.
+- Pseudo filesystems are filtered by type rather than by
+  mountpoint glob, so every snap (`squashfs`), container layer
+  (`overlay`), `tmpfs`, `devtmpfs`, `efivarfs`, … disappears
+  without a path list to maintain.
+- A disk mounted twice (bind mounts, btrfs subvolumes) is
+  deduplicated by device and shown once.
+- Network filesystems are skipped: `df` blocks indefinitely on a
+  stale NFS/CIFS mount, and this runs on **every SSH login**.
+  Mounts you do want are still listed explicitly via
+  `SYSTEM_DISK_PATHS`, and the sweep is wrapped in `timeout`.
+- `/` is always shown, including inside containers where the root
+  filesystem is an overlay and would otherwise be filtered out.
+- New knobs, all optional:
+  - `SYSTEM_DISK_AUTO=true` — set to `false` for the old
+    fixed-list behaviour.
+  - `SYSTEM_DISK_PATHS=()` — extra mountpoints on top of the auto
+    list (e.g. an NFS share); the complete list when auto is off.
+  - `SYSTEM_DISK_EXCLUDE=()` — hide mountpoints, globs allowed.
+    `/boot/efi`, `/boot/firmware`, snap and container mounts are
+    always hidden. `/boot` is deliberately kept — a full `/boot`
+    breaks kernel upgrades.
+  - `SYSTEM_DISK_MAX=10` — cap, so a NAS with dozens of ZFS
+    datasets can't flood the banner. Extra disks collapse into a
+    `+N more` line.
+- Existing configs keep working. `SYSTEM_DISK_PATHS` entries are
+  merged in and deduplicated, so nothing you picked before
+  disappears.
+
+### Changed — readable labels for panel-style mountpoints
+- Labels used to be the mountpoint truncated to 10 characters,
+  which turned OpenMediaVault's
+  `/srv/dev-disk-by-uuid-<uuid>` into a useless `Disk /srv/`.
+  Now the label is the mountpoint when it's short and human
+  (`Disk /mnt/backup`), and the device name when it isn't
+  (`Disk sdb1`). `/` stays `Disk /`.
+- The shared key/value column widens automatically when a host
+  needs the room, so a long device name is shown **in full**
+  (`Disk nvme0n1p2`) instead of being cut. Hosts with short names
+  keep the current compact layout — the width is computed once,
+  before anything renders, so every section stays aligned.
+
 ## [1.12.5]
 
 **Re-setup:** not required.

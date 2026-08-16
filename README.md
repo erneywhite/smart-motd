@@ -7,7 +7,7 @@ Pure bash, zero runtime dependencies beyond what your distro already ships, one 
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.12.5-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.13.0-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE-blue)
 
 ---
@@ -128,7 +128,7 @@ Every section is independent — toggle on/off in the wizard's first page or dir
 | **Header** | Custom banner text — letter-spaced, UPPER, lower, or plain |
 | **Welcome** | Server title + optional key/value lines (URLs, admin contacts, …) |
 | **Warning** | Legal / authorized-access notice |
-| **System status** | Hostname, OS (`Ubuntu 22.04` / `Debian 12` / …), uptime, load, memory, disks, active sessions |
+| **System status** | Hostname, OS (`Ubuntu 22.04` / `Debian 12` / …), uptime, load, memory, **all local disks**, active sessions. Disks are auto-detected — mount one later and it appears at the next login, no re-setup. Pseudo filesystems (tmpfs, snap, docker layers) are filtered out; panel-style mountpoints like `/srv/dev-disk-by-uuid-…` are labeled by device (`Disk sdb1`) |
 | **Maintenance** | "Reboot required" notice (Debian flag, RHEL `needs-restarting`) |
 | **Package updates** | Pending updates, security count, **cross-distro reboot-required indicator**, last-check freshness |
 | **Services** | Configured systemd units with `active` / `failed` / `inactive`. Optional auto-show of any unit in the failed state (`SERVICES_SHOW_FAILED=true`) — catches crashes you didn't know to look for |
@@ -315,6 +315,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 Highlights:
 
+- **v1.13.0** — Disks are detected automatically: System status now lists every local filesystem, and a disk you mount later appears at the next login without re-running the wizard. Pseudo filesystems are filtered by type (snaps, docker layers, tmpfs), disks mounted twice are deduplicated, and network mounts are skipped so a stale NFS server can't hang the login banner. Panel-style mountpoints (`/srv/dev-disk-by-uuid-…`) are labeled by device (`Disk sdb1`), and the label column widens so long names like `Disk nvme0n1p2` fit in full. Also fixed the wizard's disk picker, which detected *nothing* — it used `df -P --output=target`, a combination GNU coreutils rejects outright.
 - **v1.12.5** — Dropped Alpine Linux support. It was best-effort only and real-world testing confirmed it doesn't work cleanly (busybox login has no PAM for the alert hook; OpenRC instead of systemd for the timers). The installer now refuses on Alpine with a clear message instead of half-installing.
 - **v1.12.4** — `motd-news.service` no longer shows as failed in the failed-units auto-list — it fails as a side effect of smart-motd disabling the `update-motd.d` scripts, so it's filtered by default. New `SERVICES_FAILED_IGNORE=()` (glob-capable) suppresses other noisy units.
 - **v1.12.3** — Wizard now works with the Russian keyboard layout. Action keys like `c` (clear), `d` (delete), `a` (add) silently failed on Russian-JCUKEN before because `read -rsn1` only grabbed one byte of the two-byte Cyrillic UTF-8 sequence. New `_wiz_readkey` helper reads the full character and case patterns accept both Latin and Cyrillic equivalents (`c|C|с|С`, `a|A|ф|Ф`, etc.).
