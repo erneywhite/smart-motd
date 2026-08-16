@@ -114,6 +114,7 @@ smart-motd benchmark [N]              # time each section to spot slow ones
 smart-motd version                    # installed version + check for updates
 sudo smart-motd upgrade               # pull and install the latest release
 sudo smart-motd uninstall             # remove smart-motd
+smart-motd help                       # this list
 ```
 
 If the banner ever stops looking right, `smart-motd doctor` walks through every wired component (config, cache files, distro hook, systemd timers, `/run/motd.dynamic` freshness, generator dry-run, GitHub reachability) and reports each as `✓` / `!` / `✗` with a hint on how to fix it.
@@ -254,6 +255,8 @@ SYSTEM_DISK_EXCLUDE=('/srv/*') # hide mountpoints from the auto list (globs ok)
 SERVICES_SHOW_FAILED=true      # also surface any systemd unit in 'failed'
 SSL_WARN_DAYS=14               # days before expiry that turn a cert yellow
 ```
+
+`SECTION_ORDER` is overridable too — drop or reorder entries to change what the banner shows and in which order. `config.example.conf` carries the default list, commented out.
 
 ---
 
