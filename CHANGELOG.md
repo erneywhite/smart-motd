@@ -3,6 +3,48 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.13.1]
+
+**Re-setup:** not required.
+
+### Changed — only real disks are listed now
+- v1.13.0's auto list was still showing service mounts: `/boot`
+  on hosts with a separate boot partition, and Proxmox's
+  `/etc/pve` (a FUSE mount that always reads `24K / 128M`).
+- The filter is no longer a list of filesystem types to reject.
+  A row is now shown only when its source resolves to an actual
+  **block device** — which is what "a disk" means, and what a
+  type blacklist kept failing to express. `/etc/pve` is backed by
+  `/dev/fuse`, a *character* device, so it drops out on the same
+  rule that drops sshfs, rclone and lxcfs mounts. ZFS datasets
+  get an explicit pass since they have a pool/dataset source
+  rather than a device node.
+- `/boot` and `/boot/*` are hidden by default now (v1.13.0 kept
+  `/boot` deliberately; in practice it's noise on every banner).
+
+### Changed — disk rows are labeled by device
+- Rows other than `/` are now named after their device
+  (`Disk sdb1`, `Disk nvme0n1p1`) instead of their mountpoint.
+  Labels line up with `lsblk` and with the SMART section, they
+  stay consistent from host to host, and mountpoints that make
+  terrible labels stop leaking into the banner — panel paths like
+  `/srv/dev-disk-by-uuid-<uuid>` and Proxmox's
+  `/mnt/pve/<storage-id>`.
+- Before / after on a Proxmox host:
+  ```
+  - Disk /             ▸ 60G / 90G (67% used)
+  - Disk nvme0n1p1     ▸ 300G / 900G (33% used)
+  - Disk /mnt/pve/data ▸ 1.2T / 1.8T (67% used)
+  - Disk /etc/pve      ▸ 24K / 128M (1% used)
+  + Disk /             ▸ 60G / 90G (67% used)
+  + Disk nvme0n1p1     ▸ 300G / 900G (33% used)
+  + Disk sda1          ▸ 1.2T / 1.8T (67% used)
+  ```
+- Mountpoints listed explicitly in `SYSTEM_DISK_PATHS` keep the
+  path the operator typed as their label, and bypass every
+  filter — that's the escape hatch for anything the sweep drops
+  on purpose.
+
 ## [1.13.0]
 
 **Re-setup:** optional.

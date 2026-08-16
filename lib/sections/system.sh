@@ -52,13 +52,28 @@ _disks_ready=""
 _disks_seen_mp=" "
 _disks_seen_dev=" "
 
-# Mountpoints that are never worth a line in a login banner. /boot is
-# deliberately NOT here — a full /boot breaks kernel upgrades, so it's worth
-# seeing. /boot/efi and the Raspberry Pi firmware partition are pure noise.
+# Mountpoints that are never worth a line in a login banner: boot/firmware
+# partitions and container layer stores. These are service partitions, not
+# storage the operator manages day to day.
 _DISK_DEFAULT_EXCLUDE=(
-    '/boot/efi' '/boot/firmware'
+    '/boot' '/boot/*'
     '/var/lib/docker/*' '/var/lib/containers/*' '/var/snap/*' '/snap/*'
 )
+
+# Is this row backed by actual storage, or is it plumbing?
+#
+# The authoritative test is "does the source resolve to a block device" — that
+# is what separates a disk from the rest. It cleanly drops things a type
+# blacklist keeps missing, e.g. Proxmox's /etc/pve, whose source is /dev/fuse:
+# a *character* device, so -b is false. Same for sshfs/rclone/lxcfs mounts.
+_disks_is_real() {
+    local src="$1" fstype="$2"
+    [[ -b "$src" ]] && return 0
+    # ZFS datasets are real storage but have a pool/dataset source rather than
+    # a device node, so they need an explicit pass.
+    [[ "$fstype" == "zfs" ]] && return 0
+    return 1
+}
 
 # One df sweep over every local, real filesystem.
 #
@@ -115,21 +130,24 @@ _disks_excluded() {
     return 1
 }
 
-# Pick a short, human label for a mountpoint.
+# Label for a disk row.
+#
+# Root keeps "/" because that's universally understood. Everything else is
+# named by its device (sdb1, nvme0n1p1) rather than its mountpoint: it matches
+# what lsblk and the SMART section show, it stays consistent across hosts, and
+# it sidesteps mountpoints that are useless as labels — panel-generated paths
+# like /srv/dev-disk-by-uuid-<uuid>, or Proxmox's /mnt/pve/<storage-id>.
 #   /                              -> /
-#   /mnt/backup                    -> /mnt/backup
-#   /srv/dev-disk-by-uuid-<uuid>   -> sdb1     (OpenMediaVault et al.)
-#   very/long/mountpoint/path      -> sdc1
+#   /mnt/pve/<storage-id>          -> nvme0n1p1
+#   /srv/dev-disk-by-uuid-<uuid>   -> sdb1
 _disk_label() {
     local dev="$1" mp="$2" name
     if [[ "$mp" == "/" ]]; then
         printf '/'
         return
     fi
-    name="$mp"
-    if [[ "${mp##*/}" == dev-disk-by-* ]] || (( ${#mp} > 12 )); then
-        name="${dev##*/}"
-    fi
+    name="${dev##*/}"
+    [[ -z "$name" || "$name" == "-" ]] && name="$mp"
     (( ${#name} > 12 )) && name="${name:0:12}"
     printf '%s' "$name"
 }
@@ -196,6 +214,7 @@ disks_prepare() {
             IFS='|' read -r dev fstype size used pct mp <<<"$line"
             [[ "$mp" == "/" ]] && continue
             _disks_excluded "$mp" && continue
+            _disks_is_real "$dev" "$fstype" || continue
             [[ "$_disks_seen_dev" == *" $dev "* ]] && continue
             if (( ${#SMART_MOTD_DISK_ROWS[@]} >= max )); then
                 SMART_MOTD_DISK_SKIPPED=$(( SMART_MOTD_DISK_SKIPPED + 1 ))
