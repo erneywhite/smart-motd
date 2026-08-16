@@ -3,6 +3,28 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.13.4]
+
+**Re-setup:** not required.
+
+### Added — SMART falls back when `smartctl --scan` guesses wrong
+- `smartctl --scan` gets the transport wrong often enough to
+  matter. A plain SATA disk in a USB enclosure was announced as
+  ```
+  /dev/sda -d sntjmicron # /dev/sda [USB NVMe JMicron], NVMe device
+  ```
+  and the recommended `sntjmicron` driver returned nothing at all
+  — while generic `-d sat` reported the model, health **and**
+  temperature without complaint. The drive wasn't an NVMe at all;
+  the bridge just presents itself that way.
+- Each device is now tried with the scan-suggested driver first,
+  then `-d sat`, then `-d scsi`, stopping at the first that
+  answers. Bounded at three attempts, and only devices that fail
+  cost extra invocations — this runs in the 5-minute cache job,
+  never on the login path.
+- Enclosures that refuse SMART passthrough under every driver are
+  still skipped cleanly, with no row of `?` in the banner.
+
 ## [1.13.3]
 
 **Re-setup:** not required.

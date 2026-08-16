@@ -483,23 +483,42 @@ cache_update_smart() {
         done
     fi
 
-    local lines="" entry dev dtype
+    local lines="" entry dev dtype try
+    local -a sm_args candidates
     for entry in "${disks[@]}"; do
         dev="${entry%%|*}"
         dtype="${entry#*|}"
         local info temp health model
-        local -a sm_args=(-i -A -H)
-        [[ -n "$dtype" ]] && sm_args+=(-d "$dtype")
-        # Deliberately NOT gated on smartctl's exit status. That status is a
-        # bitmask, and bits are set for "disk is failing" / "prefail attribute
-        # below threshold" as well as for real errors — so `|| continue` here
-        # used to drop exactly the disks worth showing. Judge by whether the
-        # output is usable instead.
-        info=$(smartctl "${sm_args[@]}" "$dev" 2>/dev/null)
-        [[ -n "$info" ]] || continue
-        model=$(printf '%s\n' "$info" | awk -F': *' '/Device Model|Model Number/ {print $2; exit}')
-        health=$(printf '%s\n' "$info" | awk -F': *' '/SMART overall-health|SMART Health Status/ {print $2; exit}')
-        # Nothing identifiable came back (device didn't answer at all).
+
+        # Driver candidates, in order. `smartctl --scan` gets the transport
+        # wrong often enough to need a fallback: a plain SATA disk in a USB
+        # enclosure is announced as "USB NVMe JMicron" and the sntjmicron
+        # driver it recommends returns nothing at all, while generic `-d sat`
+        # reports model, health and temperature perfectly. Only devices that
+        # fail cost extra invocations, and this runs in the 5-minute cache
+        # job, never on the login path.
+        candidates=("$dtype")
+        [[ "$dtype" != "sat"  ]] && candidates+=("sat")
+        [[ "$dtype" != "scsi" ]] && candidates+=("scsi")
+
+        info=""; model=""; health=""
+        for try in "${candidates[@]}"; do
+            sm_args=(-i -A -H)
+            [[ -n "$try" ]] && sm_args+=(-d "$try")
+            # Deliberately NOT gated on smartctl's exit status. That status is
+            # a bitmask, and bits are set for "disk is failing" / "prefail
+            # attribute below threshold" as well as for real errors — gating on
+            # it would drop exactly the disks worth showing. Judge by whether
+            # the output is usable instead.
+            info=$(smartctl "${sm_args[@]}" "$dev" 2>/dev/null)
+            [[ -n "$info" ]] || continue
+            model=$(printf '%s\n' "$info" | awk -F': *' '/Device Model|Model Number/ {print $2; exit}')
+            health=$(printf '%s\n' "$info" | awk -F': *' '/SMART overall-health|SMART Health Status/ {print $2; exit}')
+            [[ -n "$model" || -n "$health" ]] && break
+        done
+
+        # Nothing identifiable came back from any driver (enclosures that
+        # refuse SMART passthrough entirely end up here).
         [[ -z "$model" && -z "$health" ]] && continue
         [[ -z "$model" ]] && model="$(basename "$dev")"
         [[ -z "$health" ]] && health="?"

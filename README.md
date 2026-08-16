@@ -7,7 +7,7 @@ Pure bash, zero runtime dependencies beyond what your distro already ships, one 
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.13.3-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.13.4-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE-blue)
 
 ---
@@ -137,7 +137,7 @@ Every section is independent — toggle on/off in the wizard's first page or dir
 | **SSL certs** | Days until expiry, color-coded. **Auto-detects** certs from Let's Encrypt, control panels (aaPanel, ISPmanager, FastPanel, HestiaCP, Plesk, cPanel) and any `ssl_certificate` / `SSLCertificateFile` directive in nginx / apache configs. Manual remote checks like `example.com:8443` are also supported. |
 | **Security** | Failed SSH attempts (last 24h), fail2ban bans across all jails |
 | **Temperature** | CPU temp via `lm-sensors` or `/sys/class/thermal` *(auto)* |
-| **SMART** | Per-disk health and temperature via `smartctl` *(auto)* |
+| **SMART** | Per-disk health and temperature via `smartctl` *(auto)*. Falls back through `-d sat` / `-d scsi` when `smartctl --scan` misidentifies the transport, so disks in USB enclosures still report |
 | **Docker** | Running / total containers + per-container status; detects `healthy` / `unhealthy` *(auto)* |
 | **Podman** | Same shape as Docker *(auto)* |
 | **Kubernetes** | Context, ready nodes, namespace count *(auto)* |
@@ -327,6 +327,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 Highlights:
 
+- **v1.13.4** — SMART tries `-d sat` and `-d scsi` when the driver `smartctl --scan` recommends comes back empty. Scan routinely misidentifies USB enclosures — a SATA disk behind a JMicron bridge is announced as an NVMe device, and the suggested driver reports nothing while `-d sat` returns model, health and temperature fine.
 - **v1.13.3** — fail2ban states are reported distinctly: *installed but not running* (yellow), *running but no jails configured* (red), or the normal ban count. v1.13.2 hid the line entirely in the middle case, which was worse than the problem it fixed.
 - **v1.13.2** — Security section no longer paints a green "0 banned across 0 jail(s)" when fail2ban is running with **no jails configured** — that's now a red warning, since the host is unprotected. SMART keeps the `-d TYPE` from `smartctl --scan`, so drives in USB enclosures (JMicron & co.) stop vanishing from the list, and a disk is no longer dropped just because `smartctl` exits non-zero — which it does precisely when a disk is failing. The installer now masks `motd-news` instead of leaving it permanently in `failed`.
 - **v1.13.1** — Only real disks are listed: a row shows up when its source is an actual block device, which drops `/boot` and FUSE mounts like Proxmox's `/etc/pve` that a filesystem-type blacklist kept missing. Rows are labeled by device (`Disk sdb1`, `Disk nvme0n1p1`) so they line up with `lsblk` and the SMART section.
