@@ -198,6 +198,23 @@ Optional — when enabled, fires a Telegram message on every successful SSH logi
 - **Alert language** — `en` or `ru`, independent from the wizard language.
 - **IP whitelist** — list of IPs / CIDR blocks that don't trigger an alert (your home / office / VPN ranges).
 - **Daily recap** — opt-in once-a-day summary message: SSH login count, failed attempts, pending updates, reboot status, uptime, 24h-averaged load and memory, and usage for **every** disk the MOTD shows (same auto-detection and `SYSTEM_DISK_*` filters).
+
+  ```
+  📊 Daily recap · web-01 (203.0.113.42)
+  🗓 2026-08-17
+
+  🔓 SSH logins in 24h: 4
+  🛡 Failed attempts: 128
+  📈 Avg load (24h): 0.27
+  🧠 Avg memory (24h): 29%
+  💾 Disk /: 60G / 90G (67% used)
+  💾 Disk nvme0n1p1: 300G / 900G (33% used)
+  💾 Disk sdb1: 1.2T / 1.8T (67% used)
+  📦 Package updates: 13 (security: 2)
+  ⏱ Uptime: 9d 16h
+  ```
+
+  Fires at `TELEGRAM_RECAP_HOUR` (server time), at most once per calendar day. Send one now with `sudo smart-motd test-alert recap` — that bypasses both the hour and the once-a-day gate without suppressing the real one.
 - **Additional destinations** — extra `bot_token|chat_id|thread_id` tuples. Every alert is fanned out to the primary destination AND each extra in parallel. Useful when the same login alert needs to land in your own chat *and* a client's chat from different bots.
 - **Test send** — the wizard offers a test message before saving. Fire one any time later via `sudo smart-motd test-alert [ssh|recap]`.
 
