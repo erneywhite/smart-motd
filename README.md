@@ -7,7 +7,7 @@ Pure bash, zero runtime dependencies beyond what your distro already ships, one 
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.13.4-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.14.0-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE-blue)
 
 ---
@@ -197,7 +197,7 @@ Optional — when enabled, fires a Telegram message on every successful SSH logi
 - **Thread ID** (groups with Topics only, optional).
 - **Alert language** — `en` or `ru`, independent from the wizard language.
 - **IP whitelist** — list of IPs / CIDR blocks that don't trigger an alert (your home / office / VPN ranges).
-- **Daily recap** — opt-in once-a-day summary message: SSH login count, failed attempts, pending updates, reboot status, uptime, 24h-averaged load and memory, root disk usage.
+- **Daily recap** — opt-in once-a-day summary message: SSH login count, failed attempts, pending updates, reboot status, uptime, 24h-averaged load and memory, and usage for **every** disk the MOTD shows (same auto-detection and `SYSTEM_DISK_*` filters).
 - **Additional destinations** — extra `bot_token|chat_id|thread_id` tuples. Every alert is fanned out to the primary destination AND each extra in parallel. Useful when the same login alert needs to land in your own chat *and* a client's chat from different bots.
 - **Test send** — the wizard offers a test message before saving. Fire one any time later via `sudo smart-motd test-alert [ssh|recap]`.
 
@@ -330,6 +330,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 Highlights:
 
+- **v1.14.0** — The daily Telegram recap lists every disk instead of just `/`, reusing the same detection and filters as the banner. A backup volume filling up used to go unmentioned in the one message meant to catch it.
 - **v1.13.4** — SMART tries `-d sat` and `-d scsi` when the driver `smartctl --scan` recommends comes back empty. Scan routinely misidentifies USB enclosures — a SATA disk behind a JMicron bridge is announced as an NVMe device, and the suggested driver reports nothing while `-d sat` returns model, health and temperature fine.
 - **v1.13.3** — fail2ban states are reported distinctly: *installed but not running* (yellow), *running but no jails configured* (red), or the normal ban count. v1.13.2 hid the line entirely in the middle case, which was worse than the problem it fixed.
 - **v1.13.2** — Security section no longer paints a green "0 banned across 0 jail(s)" when fail2ban is running with **no jails configured** — that's now a red warning, since the host is unprotected. SMART keeps the `-d TYPE` from `smartctl --scan`, so drives in USB enclosures (JMicron & co.) stop vanishing from the list, and a disk is no longer dropped just because `smartctl` exits non-zero — which it does precisely when a disk is failing. The installer now masks `motd-news` instead of leaving it permanently in `failed`.

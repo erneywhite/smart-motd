@@ -3,6 +3,34 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.14.0]
+
+**Re-setup:** not required.
+
+### Changed — the daily Telegram recap lists every disk
+- The recap reported only `/`, so a data or backup volume filling
+  up went unmentioned in the one message that exists to catch
+  exactly that. On a host with three disks it said `Диск /: 66G /
+  94G` and nothing about the 1.8 TB volume at 72%.
+- It now lists every disk the MOTD lists:
+  ```
+  💾 Disk /: 66G / 94G (74% used)
+  💾 Disk nvme0n1p1: 307G / 938G (35% used)
+  💾 Disk sda1: 1.3T / 1.8T (72% used)
+  ```
+- This reverses a deliberate v1.7.1 decision to keep the recap to
+  `/` alone. That was right at the time: extra entries were
+  hand-configured paths like `/var`, which really was noise in a
+  once-a-day glance message. Since v1.13.0 the list is
+  auto-detected real block devices, which is exactly what belongs
+  in a daily summary.
+- `motd-recap` reuses `disks_prepare()` from the system section
+  rather than running its own `df`, so there is one definition of
+  "what counts as a disk" — same filters, same `SYSTEM_DISK_*`
+  config, same labels. `SYSTEM_DISK_EXCLUDE` and `SYSTEM_DISK_MAX`
+  apply to the recap too. Falls back to `/` alone if the section
+  library isn't readable.
+
 ## [1.13.4]
 
 **Re-setup:** not required.

@@ -21,6 +21,14 @@ TELEGRAM_DESTS=()
 TELEGRAM_RECAP_ENABLED=false
 TELEGRAM_RECAP_HOUR=9
 
+# Disk knobs, so the recap lists exactly what the MOTD lists. Every use below
+# has a :- fallback too, but declaring them keeps this file honest under set -u
+# if a future change drops one of those fallbacks.
+SYSTEM_DISK_AUTO=true
+SYSTEM_DISK_PATHS=()
+SYSTEM_DISK_EXCLUDE=()
+SYSTEM_DISK_MAX=10
+
 # shellcheck disable=SC1090
 [[ -r "$SMART_MOTD_CONFIG" ]]  && . "$SMART_MOTD_CONFIG"
 # shellcheck disable=SC1090
@@ -143,14 +151,38 @@ if [[ -s "$SMART_MOTD_CACHE_DIR/mem_samples" ]]; then
     ' "$SMART_MOTD_CACHE_DIR/mem_samples")
 fi
 
-# Current root-disk usage. Recap deliberately reports ONLY '/' (the system
-# disk) — additional configured SYSTEM_DISK_PATHS belong in the on-login
-# MOTD where the operator can scan them all at once. The Telegram recap is
-# a once-a-day glance message, so we keep it to the single most universal
-# data point.
-DISK_ROOT=""
-DISK_ROOT=$(df -hP / 2>/dev/null \
-    | awk 'NR==2 {gsub("%","",$5); printf "%s / %s (%s%% used)", $3, $2, $5}')
+# Disk usage — every disk the MOTD shows, not just '/'.
+#
+# This used to report the root filesystem alone (v1.7.1), which made sense
+# when extra entries were hand-configured paths like '/var'. Since v1.13.0
+# the list is auto-detected real block devices, and reporting only '/' meant
+# the recap stayed silent about a data or backup volume filling up — exactly
+# the kind of thing a once-a-day summary exists to catch.
+#
+# Reuses disks_prepare() from the system section so there is one definition
+# of "what counts as a disk" (same filters, same SYSTEM_DISK_* config, same
+# labels) instead of a second copy here that would drift.
+DISK_ROWS=()
+if [[ -r "$SMART_MOTD_PREFIX/lib/common.sh" ]] \
+   && [[ -r "$SMART_MOTD_PREFIX/lib/sections/system.sh" ]]; then
+    # shellcheck source=../lib/common.sh
+    . "$SMART_MOTD_PREFIX/lib/common.sh"
+    # shellcheck source=../lib/sections/system.sh
+    . "$SMART_MOTD_PREFIX/lib/sections/system.sh"
+fi
+if declare -F disks_prepare >/dev/null 2>&1; then
+    disks_prepare
+    for _row in "${SMART_MOTD_DISK_ROWS[@]:-}"; do
+        [[ -n "$_row" ]] && DISK_ROWS+=("$_row")
+    done
+fi
+# Fallback: root only, in case the libraries aren't readable (partial
+# upgrade, or a recap invoked with an unusual SMART_MOTD_PREFIX).
+if [[ ${#DISK_ROWS[@]} -eq 0 ]]; then
+    _fallback=$(df -hP / 2>/dev/null \
+        | awk 'NR==2 {gsub("%","",$5); printf "/|%s|%s|%s", $3, $2, $5}')
+    [[ -n "$_fallback" ]] && DISK_ROWS+=("$_fallback")
+fi
 
 # ---------- compose message ----------
 
@@ -164,8 +196,12 @@ if [[ "$TELEGRAM_ALERTS_LANG" == "ru" ]]; then
 📈 Средний LA (24ч): ${AVG_LOAD}"
     [[ -n "$AVG_MEM" ]]  && MSG+="
 🧠 Средняя память (24ч): ${AVG_MEM}%"
-    [[ -n "$DISK_ROOT" ]] && MSG+="
-💾 Диск /: ${DISK_ROOT}"
+    for _row in "${DISK_ROWS[@]:-}"; do
+        [[ -n "$_row" ]] || continue
+        IFS='|' read -r _lbl _used _size _pct <<<"$_row"
+        MSG+="
+💾 Диск ${_lbl}: ${_used} / ${_size} (${_pct}% занято)"
+    done
     MSG+="
 📦 Обновлений пакетов: ${UPDATES_COUNT}"
     [[ "$UPDATES_SECURITY" -gt 0 ]] && MSG+=" (security: ${UPDATES_SECURITY})"
@@ -185,8 +221,12 @@ else
 📈 Avg load (24h): ${AVG_LOAD}"
     [[ -n "$AVG_MEM" ]]  && MSG+="
 🧠 Avg memory (24h): ${AVG_MEM}%"
-    [[ -n "$DISK_ROOT" ]] && MSG+="
-💾 Disk /: ${DISK_ROOT}"
+    for _row in "${DISK_ROWS[@]:-}"; do
+        [[ -n "$_row" ]] || continue
+        IFS='|' read -r _lbl _used _size _pct <<<"$_row"
+        MSG+="
+💾 Disk ${_lbl}: ${_used} / ${_size} (${_pct}% used)"
+    done
     MSG+="
 📦 Package updates: ${UPDATES_COUNT}"
     [[ "$UPDATES_SECURITY" -gt 0 ]] && MSG+=" (security: ${UPDATES_SECURITY})"
