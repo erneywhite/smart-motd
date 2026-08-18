@@ -220,11 +220,24 @@ Optional — when enabled, fires a Telegram message on every successful SSH logi
 - **Additional destinations** — extra `bot_token|chat_id|thread_id` tuples. Every alert is fanned out to the primary destination AND each extra in parallel. Useful when the same login alert needs to land in your own chat *and* a client's chat from different bots.
 - **Test send** — the wizard offers a test message before saving. Fire one any time later via `sudo smart-motd test-alert [ssh|recap]`.
 
-**Under the hood**: a single `session optional pam_exec.so /usr/local/lib/smart-motd/bin/motd-ssh-alert` line is appended to `/etc/pam.d/sshd` at install time (the original is backed up to `/etc/pam.d/sshd.smart-motd.bak`). The handler does an rDNS lookup with a 3 s timeout and fires the Telegram POST in a detached background subshell — **login is never delayed by the network call**.
+**Under the hood**: a single `session optional pam_exec.so /usr/local/lib/smart-motd/bin/motd-ssh-alert` line is appended to `/etc/pam.d/sshd` at install time (the original is backed up to `/etc/pam.d/sshd.smart-motd.bak`). The handler does its whole job — reverse DNS, the optional geo lookup, composing the message and delivering it — inside a detached background subshell, and returns to `pam_exec` immediately. **No network call is on the login path**, so a slow resolver or an unreachable Telegram can't hold up a login.
 
 **Security**:
 
 - Bot token, chat ID, thread ID and the multi-dest array live in `/etc/smart-motd/secrets.conf` with mode `0600` (root-only). `config.conf` stays world-readable without leaking credentials.
+
+  The wizard writes that file for you; this is its shape if you'd rather edit it by hand:
+
+  ```bash
+  # /etc/smart-motd/secrets.conf — mode 0600, root only
+  TELEGRAM_BOT_TOKEN='123456789:AA...'
+  TELEGRAM_CHAT_ID='987654321'      # negative for a group or channel
+  TELEGRAM_THREAD_ID=''             # forum topic id, optional
+  TELEGRAM_DESTS=(                  # extra destinations, optional
+      '111111:AAA...|-1001234567890|'
+      '222222:BBB...|987654321|'
+  )
+  ```
 - The PAM hook is `optional`, so even if `pam_exec` somehow fails, SSH still works.
 - `smart-motd uninstall` removes the PAM line and the secrets file cleanly.
 
@@ -349,6 +362,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 Highlights:
 
+- **v1.15.1** — The addresses excluded from geolocation are now matched with the same CIDR arithmetic as the alert whitelist instead of glob patterns, which also makes the boundaries exact (`172.15.x` and `172.32.x` really are outside RFC1918). Added `TELEGRAM_ALERTS_GEOIP_SKIP` for internal networks on non-private ranges.
 - **v1.15.0** — SSH alerts can show where the login came from (`Location: Amsterdam, Netherlands`), opt-in via `TELEGRAM_ALERTS_GEOIP` since it hands the source IP to a third-party service; private and VPN addresses are never sent. Also fixed reverse DNS running on the login path — it could add up to 3s to every login, and now runs in the background with the rest of the enrichment.
 - **v1.14.0** — The daily Telegram recap lists every disk instead of just `/`, reusing the same detection and filters as the banner. A backup volume filling up used to go unmentioned in the one message meant to catch it.
 - **v1.13.4** — SMART tries `-d sat` and `-d scsi` when the driver `smartctl --scan` recommends comes back empty. Scan routinely misidentifies USB enclosures — a SATA disk behind a JMicron bridge is announced as an NVMe device, and the suggested driver reports nothing while `-d sat` returns model, health and temperature fine.
