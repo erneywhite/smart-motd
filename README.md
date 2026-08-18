@@ -7,7 +7,7 @@ Pure bash, zero runtime dependencies beyond what your distro already ships, one 
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.14.0-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.15.0-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE-blue)
 
 ---
@@ -185,6 +185,7 @@ Optional — when enabled, fires a Telegram message on every successful SSH logi
 👤 User: root
 🌐 IP: 198.51.100.42
 🌐 rDNS: client.example.net
+🌍 Location: Amsterdam, Netherlands
 🖥 Server: web-01 (203.0.113.42)
 🕐 2026-05-08 22:12:46 UTC
 ```
@@ -197,6 +198,7 @@ Optional — when enabled, fires a Telegram message on every successful SSH logi
 - **Thread ID** (groups with Topics only, optional).
 - **Alert language** — `en` or `ru`, independent from the wizard language.
 - **IP whitelist** — list of IPs / CIDR blocks that don't trigger an alert (your home / office / VPN ranges).
+- **Login location** — optional `Location: City, Country` line, resolved from the connecting IP (`TELEGRAM_ALERTS_GEOIP`, **off by default**). Enabling it sends that IP to a third-party lookup service over HTTPS on every alert; private, loopback and VPN addresses are never sent, since they're filtered locally first. The lookup runs in the background and never delays login.
 - **Daily recap** — opt-in once-a-day summary message: SSH login count, failed attempts, pending updates, reboot status, uptime, 24h-averaged load and memory, and usage for **every** disk the MOTD shows (same auto-detection and `SYSTEM_DISK_*` filters).
 
   ```
@@ -291,7 +293,7 @@ SSL_WARN_DAYS=14               # days before expiry that turn a cert yellow
 ## Security
 
 - The installer is plain shell. Read it before piping it to root: [`install.sh`](install.sh).
-- The runtime never opens listening sockets and only makes outbound HTTPS calls when you enable optional sections (public IP, SSL remote check, weather, weather-city geolocation).
+- The runtime never opens listening sockets and only makes outbound HTTPS calls when you enable optional features: public IP, SSL remote check, weather, weather-city geolocation, the GitHub update check, Telegram alerts, and — if you switch it on — the login-IP geolocation described above.
 - All cached values are world-readable in `/var/cache/smart-motd/`. Don't put secrets in the warning text or welcome lines — those end up in the banner everyone sees.
 - The cache update job runs as root via systemd (it needs Docker / journalctl / fail2ban access). Cache files are written atomically.
 
@@ -347,6 +349,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 Highlights:
 
+- **v1.15.0** — SSH alerts can show where the login came from (`Location: Amsterdam, Netherlands`), opt-in via `TELEGRAM_ALERTS_GEOIP` since it hands the source IP to a third-party service; private and VPN addresses are never sent. Also fixed reverse DNS running on the login path — it could add up to 3s to every login, and now runs in the background with the rest of the enrichment.
 - **v1.14.0** — The daily Telegram recap lists every disk instead of just `/`, reusing the same detection and filters as the banner. A backup volume filling up used to go unmentioned in the one message meant to catch it.
 - **v1.13.4** — SMART tries `-d sat` and `-d scsi` when the driver `smartctl --scan` recommends comes back empty. Scan routinely misidentifies USB enclosures — a SATA disk behind a JMicron bridge is announced as an NVMe device, and the suggested driver reports nothing while `-d sat` returns model, health and temperature fine.
 - **v1.13.3** — fail2ban states are reported distinctly: *installed but not running* (yellow), *running but no jails configured* (red), or the normal ban count. v1.13.2 hid the line entirely in the middle case, which was worse than the problem it fixed.

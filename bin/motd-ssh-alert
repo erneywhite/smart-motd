@@ -31,6 +31,9 @@ TELEGRAM_ALERTS_IP_WHITELIST=()
 # tuple above. Each entry is "token|chat_id|thread_id" — useful for sending
 # the same alert to several chats (e.g. your own + a client's).
 TELEGRAM_DESTS=()
+# Look up the connecting IP's city/country and add it to the message. Off by
+# default: it sends that IP to a third-party service on every login.
+TELEGRAM_ALERTS_GEOIP=false
 
 # shellcheck disable=SC1090
 [[ -r "$SMART_MOTD_CONFIG" ]]  && . "$SMART_MOTD_CONFIG"
@@ -121,57 +124,119 @@ if [[ ${#TELEGRAM_ALERTS_IP_WHITELIST[@]} -gt 0 ]] && [[ "$RHOST" =~ ^[0-9.]+$ ]
     fi
 fi
 
-# Best-effort reverse DNS with a short timeout — never block login on slow DNS.
-RDNS=""
-if [[ "$RHOST" =~ ^[0-9a-fA-F.:]+$ ]]; then
-    if command -v dig >/dev/null 2>&1; then
-        RDNS=$(timeout 3 dig +short -x "$RHOST" 2>/dev/null | head -1 | sed 's/\.$//')
-    elif command -v host >/dev/null 2>&1; then
-        RDNS=$(timeout 3 host "$RHOST" 2>/dev/null | awk '/domain name pointer/ {print $NF; exit}' | sed 's/\.$//')
-    elif command -v getent >/dev/null 2>&1; then
-        RDNS=$(timeout 3 getent hosts "$RHOST" 2>/dev/null | awk '{print $2}')
-    fi
-fi
+# Resolve an IP to "City, Country" via a keyless HTTPS lookup service.
+#
+# Prints nothing when the address isn't publicly routable, when no service
+# answers, or when the answer carries no usable fields — the caller then omits
+# the line entirely rather than printing "unknown".
+_geo_lookup() {
+    local ip="$1" url json city country
+    [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || "$ip" == *:* ]] || return 0
+    # Private, loopback, link-local and CGNAT addresses: a public lookup can
+    # only return noise for them, and there's no reason to hand them to a
+    # third party at all.
+    case "$ip" in
+        0.*|10.*|127.*|169.254.*|192.168.*)          return 0 ;;
+        172.1[6-9].*|172.2[0-9].*|172.3[01].*)       return 0 ;;
+        100.6[4-9].*|100.[7-9][0-9].*|100.1[01][0-9].*|100.12[0-7].*) return 0 ;;
+        ::1|fe80:*|fc*:*|fd*:*)                      return 0 ;;
+    esac
+    # Two providers, tried in order. Both are keyless and speak HTTPS; the
+    # parsing is deliberately generic (no jq — this project ships with no
+    # runtime dependencies) so swapping in another service is a URL change.
+    for url in "https://ipwho.is/${ip}" "https://ipapi.co/${ip}/json/"; do
+        json=$(curl -fsS --max-time 4 "$url" 2>/dev/null) || continue
+        [[ -n "$json" ]] || continue
+        city=$(printf '%s' "$json" \
+            | grep -oE '"city"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 \
+            | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\1/')
+        # Prefer the spelled-out name; "country" alone is a 2-letter code on
+        # some services and the full name on others.
+        country=$(printf '%s' "$json" \
+            | grep -oE '"country_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 \
+            | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\1/')
+        [[ -z "$country" ]] && country=$(printf '%s' "$json" \
+            | grep -oE '"country"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 \
+            | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\1/')
+        if [[ -n "$city" && -n "$country" ]]; then
+            printf '%s, %s' "$city" "$country"; return 0
+        fi
+        [[ -n "$country" ]] && { printf '%s' "$country"; return 0; }
+    done
+    return 0
+}
 
-if [[ "$TELEGRAM_ALERTS_LANG" == "ru" ]]; then
-    TS=$(date '+%d.%m.%Y %H:%M:%S %Z')
-    MSG="🔓 SSH вход на сервер
+# Everything below runs in ONE detached subshell.
+#
+# Both enrichment steps hit the network, and pam_exec waits for this script to
+# exit before the user gets their shell. Reverse DNS used to run inline, which
+# quietly added up to 3s to every login on a slow resolver; adding the geo
+# lookup beside it would have doubled that. Now the script returns immediately
+# and the message is enriched, composed and delivered in the background.
+(
+    # Best-effort reverse DNS. Still capped, so a black-holed resolver can't
+    # leave this subshell hanging around forever.
+    RDNS=""
+    if [[ "$RHOST" =~ ^[0-9a-fA-F.:]+$ ]]; then
+        if command -v dig >/dev/null 2>&1; then
+            RDNS=$(timeout 3 dig +short -x "$RHOST" 2>/dev/null | head -1 | sed 's/\.$//')
+        elif command -v host >/dev/null 2>&1; then
+            RDNS=$(timeout 3 host "$RHOST" 2>/dev/null | awk '/domain name pointer/ {print $NF; exit}' | sed 's/\.$//')
+        elif command -v getent >/dev/null 2>&1; then
+            RDNS=$(timeout 3 getent hosts "$RHOST" 2>/dev/null | awk '{print $2}')
+        fi
+    fi
+
+    # Optional geolocation. Off by default: it hands the source IP of every
+    # SSH login to a third-party service, which is the operator's call to make
+    # rather than something to inherit silently on upgrade.
+    GEO=""
+    [[ "${TELEGRAM_ALERTS_GEOIP:-false}" == "true" ]] && GEO=$(_geo_lookup "$RHOST")
+
+    if [[ "$TELEGRAM_ALERTS_LANG" == "ru" ]]; then
+        TS=$(date '+%d.%m.%Y %H:%M:%S %Z')
+        MSG="🔓 SSH вход на сервер
 👤 Пользователь: ${USER_NAME}
 🌐 IP: ${RHOST}"
-    [[ -n "$RDNS" ]] && MSG+="
+        [[ -n "$RDNS" ]] && MSG+="
 🌐 rDNS: ${RDNS}"
-    MSG+="
+        [[ -n "$GEO" ]] && MSG+="
+🌍 Локация: ${GEO}"
+        MSG+="
 🖥 Сервер: ${SERVER_DISPLAY}
 🕐 ${TS}"
-else
-    TS=$(date '+%Y-%m-%d %H:%M:%S %Z')
-    MSG="🔓 SSH login
+    else
+        TS=$(date '+%Y-%m-%d %H:%M:%S %Z')
+        MSG="🔓 SSH login
 👤 User: ${USER_NAME}
 🌐 IP: ${RHOST}"
-    [[ -n "$RDNS" ]] && MSG+="
+        [[ -n "$RDNS" ]] && MSG+="
 🌐 rDNS: ${RDNS}"
-    MSG+="
+        [[ -n "$GEO" ]] && MSG+="
+🌍 Location: ${GEO}"
+        MSG+="
 🖥 Server: ${SERVER_DISPLAY}
 🕐 ${TS}"
-fi
+    fi
 
-# Fire off one detached send per destination, so login doesn't wait for any
-# HTTPS round-trip and a slow / unreachable destination doesn't hold up the
-# others. Each subshell is independent.
-for dest in "${ALL_DESTS[@]}"; do
-    IFS='|' read -r d_token d_chat d_thread <<<"$dest"
-    [[ -n "$d_token" && -n "$d_chat" ]] || continue
-    (
-        URL="https://api.telegram.org/bot${d_token}/sendMessage"
-        args=(
-            --data-urlencode "chat_id=${d_chat}"
-            --data-urlencode "text=${MSG}"
-            --data-urlencode "disable_web_page_preview=true"
-        )
-        [[ -n "$d_thread" ]] && args+=( --data-urlencode "message_thread_id=${d_thread}" )
-        curl -fsS --max-time 8 "${args[@]}" "$URL" >/dev/null 2>&1
-    ) &
-    disown 2>/dev/null || true
-done
+    # One send per destination, each independent, so a slow or unreachable
+    # endpoint doesn't hold up the others.
+    for dest in "${ALL_DESTS[@]}"; do
+        IFS='|' read -r d_token d_chat d_thread <<<"$dest"
+        [[ -n "$d_token" && -n "$d_chat" ]] || continue
+        (
+            URL="https://api.telegram.org/bot${d_token}/sendMessage"
+            args=(
+                --data-urlencode "chat_id=${d_chat}"
+                --data-urlencode "text=${MSG}"
+                --data-urlencode "disable_web_page_preview=true"
+            )
+            [[ -n "$d_thread" ]] && args+=( --data-urlencode "message_thread_id=${d_thread}" )
+            curl -fsS --max-time 8 "${args[@]}" "$URL" >/dev/null 2>&1
+        ) &
+    done
+    wait
+) >/dev/null 2>&1 &
+disown 2>/dev/null || true
 
 exit 0

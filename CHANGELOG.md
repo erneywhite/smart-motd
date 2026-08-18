@@ -3,6 +3,48 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.15.0]
+
+**Re-setup:** optional.
+
+### Added — login location in SSH alerts (`TELEGRAM_ALERTS_GEOIP`)
+- Optional `Location: City, Country` line, resolved from the
+  connecting IP:
+  ```
+  🔓 SSH login
+  👤 User: root
+  🌐 IP: 203.0.113.9
+  🌍 Location: Amsterdam, Netherlands
+  🖥 Server: web-01 (198.51.100.7)
+  🕐 2026-08-18 09:28:17 EEST
+  ```
+- **Off by default.** Enabling it sends the source IP of every SSH
+  login to a third-party lookup service, which is the operator's
+  call to make rather than something to inherit silently on
+  upgrade. Turn it on with:
+  ```bash
+  sudo smart-motd config set TELEGRAM_ALERTS_GEOIP true
+  ```
+  The wizard asks about it too, right after the IP whitelist.
+- Private, loopback, link-local and CGNAT addresses are **never
+  sent anywhere** — they're filtered locally before any request,
+  since a public lookup could only return noise for them.
+- Two keyless HTTPS providers are tried in order (ipwho.is, then
+  ipapi.co). Parsing is generic rather than provider-specific, so
+  swapping in another service is a URL change. If none answer,
+  the line is simply omitted rather than printed as "unknown".
+
+### Fixed — reverse DNS was running on the login path
+- The alert script's rDNS lookup ran inline, before the message
+  was composed, with a 3-second timeout. On a slow or black-holed
+  resolver that delay was added to **every SSH login**, despite
+  the script's own header promising it wasn't. Only the Telegram
+  POST was actually backgrounded.
+- Both enrichment steps (rDNS and the new geo lookup) now run
+  inside the detached subshell, so pam_exec gets its exit
+  immediately and the message is composed and delivered in the
+  background. Logins are no longer held up by DNS at all.
+
 ## [1.14.0]
 
 **Re-setup:** not required.

@@ -58,6 +58,7 @@ TELEGRAM_CHAT_ID=""
 TELEGRAM_THREAD_ID=""
 TELEGRAM_DESTS=()
 TELEGRAM_ALERTS_IP_WHITELIST=()
+TELEGRAM_ALERTS_GEOIP=false
 TELEGRAM_RECAP_ENABLED=false
 TELEGRAM_RECAP_HOUR=9
 DOCKER_FILTER=""
@@ -1177,6 +1178,23 @@ Leave empty to alert on every login." \
 Пусто = слать на каждый вход.")" \
         "${TELEGRAM_ALERTS_IP_WHITELIST[@]}")
 
+    # Geolocation of the connecting IP — opt-in, off by default because it
+    # hands that IP to a third-party service on every login.
+    if wizard_yesno \
+        "$(_l "Show login location in alerts?" "Показывать локацию входа в алертах?")" \
+        "$(_l \
+"Adds a 'Location: City, Country' line to each alert, resolved from the connecting IP.
+
+This sends that IP to a third-party lookup service (ipwho.is, falling back to ipapi.co) over HTTPS on every alert. Private and VPN addresses are never sent — they are skipped locally. The lookup runs in the background, so it never delays login." \
+"Добавляет в алерт строку 'Локация: Город, Страна', определённую по IP подключения.
+
+Это отправляет данный IP стороннему сервису (ipwho.is, запасной — ipapi.co) по HTTPS при каждом алерте. Приватные и VPN-адреса не отправляются никогда — они отсекаются локально. Запрос выполняется в фоне и не задерживает вход.")" \
+        "$([[ "${TELEGRAM_ALERTS_GEOIP:-false}" == "true" ]] && echo y || echo n)"; then
+        TELEGRAM_ALERTS_GEOIP=true
+    else
+        TELEGRAM_ALERTS_GEOIP=false
+    fi
+
     # Daily recap toggle — opt-in, off by default.
     if wizard_yesno \
         "$(_l "Enable daily recap?" "Включить ежедневную сводку?")" \
@@ -1326,6 +1344,7 @@ TS=$(date '+%Y-%m-%d %H:%M:%S')
     echo "# Bot token / chat ID / thread ID live in secrets.conf (root-only)."
     echo "TELEGRAM_ALERTS_LANG=$(qstr "${TELEGRAM_ALERTS_LANG:-en}")"
     write_array TELEGRAM_ALERTS_IP_WHITELIST "${TELEGRAM_ALERTS_IP_WHITELIST[@]}"
+    echo "TELEGRAM_ALERTS_GEOIP=${TELEGRAM_ALERTS_GEOIP:-false}"
     echo "TELEGRAM_RECAP_ENABLED=${TELEGRAM_RECAP_ENABLED:-false}"
     echo "TELEGRAM_RECAP_HOUR=${TELEGRAM_RECAP_HOUR:-9}"
     echo
