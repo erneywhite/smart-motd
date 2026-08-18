@@ -7,7 +7,7 @@ Pure bash, zero runtime dependencies beyond what your distro already ships, one 
 [![CI](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml/badge.svg)](https://github.com/erneywhite/smart-motd/actions/workflows/ci.yml)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Bash](https://img.shields.io/badge/bash-%3E%3D4.0-blue)
-![Version](https://img.shields.io/badge/version-v1.15.0-brightgreen)
+![Version](https://img.shields.io/badge/version-v1.15.1-brightgreen)
 ![Distro support](https://img.shields.io/badge/distros-Debian%20%7C%20RHEL%20%7C%20Arch%20%7C%20openSUSE-blue)
 
 ---
@@ -198,7 +198,7 @@ Optional — when enabled, fires a Telegram message on every successful SSH logi
 - **Thread ID** (groups with Topics only, optional).
 - **Alert language** — `en` or `ru`, independent from the wizard language.
 - **IP whitelist** — list of IPs / CIDR blocks that don't trigger an alert (your home / office / VPN ranges).
-- **Login location** — optional `Location: City, Country` line, resolved from the connecting IP (`TELEGRAM_ALERTS_GEOIP`, **off by default**). Enabling it sends that IP to a third-party lookup service over HTTPS on every alert; private, loopback and VPN addresses are never sent, since they're filtered locally first. The lookup runs in the background and never delays login.
+- **Login location** — optional `Location: City, Country` line, resolved from the connecting IP (`TELEGRAM_ALERTS_GEOIP`, **off by default**). Enabling it sends that IP to a third-party lookup service over HTTPS on every alert; private, loopback and VPN addresses are never sent, since they're filtered locally first (all three RFC1918 ranges, loopback, link-local and CGNAT — extend with `TELEGRAM_ALERTS_GEOIP_SKIP` if your internal network uses some other range). The lookup runs in the background and never delays login.
 - **Daily recap** — opt-in once-a-day summary message: SSH login count, failed attempts, pending updates, reboot status, uptime, 24h-averaged load and memory, and usage for **every** disk the MOTD shows (same auto-detection and `SYSTEM_DISK_*` filters).
 
   ```

@@ -3,6 +3,29 @@
 All notable changes to smart-motd are listed here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.15.1]
+
+**Re-setup:** not required.
+
+### Changed — one CIDR matcher, and the geo skip list is configurable
+- The addresses excluded from geolocation were matched with glob
+  patterns, while the alert whitelist a few lines above already did
+  real CIDR arithmetic — two ways of asking the same question in
+  one script, and the glob form can't express an arbitrary range.
+  Both now share `_ip_in_cidr`.
+- New `TELEGRAM_ALERTS_GEOIP_SKIP=()` for internal networks that
+  don't sit on a standard private range. Same syntax as the
+  whitelist (bare IP or CIDR), added on top of the built-in list
+  rather than replacing it.
+- The always-skipped blocks, unchanged but now stated as CIDRs:
+  `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` (all three
+  RFC1918 ranges), `127.0.0.0/8`, `169.254.0.0/16`,
+  `100.64.0.0/10`, `0.0.0.0/8`, plus IPv6 `::1`, `fe80::/10` and
+  `fc00::/7`.
+- Boundaries are now exact where globs were sloppy: `172.15.x` and
+  `172.32.x` are correctly *outside* RFC1918, as are `100.63.x`
+  and `100.128.x` relative to CGNAT.
+
 ## [1.15.0]
 
 **Re-setup:** optional.

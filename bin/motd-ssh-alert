@@ -34,6 +34,9 @@ TELEGRAM_DESTS=()
 # Look up the connecting IP's city/country and add it to the message. Off by
 # default: it sends that IP to a third-party service on every login.
 TELEGRAM_ALERTS_GEOIP=false
+# Extra address blocks to never geolocate, on top of the private ranges that
+# are always skipped. Same syntax as the whitelist: bare IP or CIDR.
+TELEGRAM_ALERTS_GEOIP_SKIP=()
 
 # shellcheck disable=SC1090
 [[ -r "$SMART_MOTD_CONFIG" ]]  && . "$SMART_MOTD_CONFIG"
@@ -90,39 +93,59 @@ else
     SERVER_DISPLAY="$HOSTNAME_FULL"
 fi
 
-# IP whitelist — silently skip the alert when the connecting IP matches an
-# entry in TELEGRAM_ALERTS_IP_WHITELIST. Each entry is either a single IPv4
-# (e.g. "203.0.113.5") or a CIDR block (e.g. "192.168.1.0/24" or
-# "10.0.0.0/8"). Useful to suppress notifications about your own logins
-# from a known office / home / VPN range.
-if [[ ${#TELEGRAM_ALERTS_IP_WHITELIST[@]} -gt 0 ]] && [[ "$RHOST" =~ ^[0-9.]+$ ]]; then
-    _ip_to_int() {
-        local ip="$1" o1 o2 o3 o4
-        IFS=. read -r o1 o2 o3 o4 <<<"$ip"
-        printf '%d' "$(( (o1<<24) + (o2<<16) + (o3<<8) + o4 ))"
-    }
-    rhost_int=$(_ip_to_int "$RHOST" 2>/dev/null) || rhost_int=""
-    if [[ -n "$rhost_int" ]]; then
-        for entry in "${TELEGRAM_ALERTS_IP_WHITELIST[@]}"; do
-            [[ -z "$entry" ]] && continue
-            if [[ "$entry" == */* ]]; then
-                # CIDR: compare RHOST/mask against entry/mask
-                net="${entry%/*}"; bits="${entry#*/}"
-                [[ "$bits" =~ ^[0-9]+$ ]] || continue
-                (( bits >= 0 && bits <= 32 )) || continue
-                net_int=$(_ip_to_int "$net" 2>/dev/null) || continue
-                if (( bits == 0 )); then exit 0; fi
-                mask=$(( 0xFFFFFFFF & (~((1 << (32 - bits)) - 1)) ))
-                if (( (rhost_int & mask) == (net_int & mask) )); then
-                    exit 0
-                fi
-            else
-                # Single IP literal
-                [[ "$RHOST" == "$entry" ]] && exit 0
-            fi
-        done
+# ---- IPv4 range matching ----
+# Shared by the alert whitelist and the geo skip list, so both understand
+# exactly the same syntax: a bare address or a CIDR block.
+_ip_to_int() {
+    local ip="$1" o1 o2 o3 o4 o
+    [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 1
+    IFS=. read -r o1 o2 o3 o4 <<<"$ip"
+    for o in "$o1" "$o2" "$o3" "$o4"; do
+        (( o >= 0 && o <= 255 )) || return 1
+    done
+    printf '%d' "$(( (o1<<24) + (o2<<16) + (o3<<8) + o4 ))"
+}
+
+# _ip_in_cidr IP ENTRY — ENTRY is "203.0.113.5" or "192.168.1.0/24".
+# Returns non-zero for anything it can't parse, including IPv6, so callers
+# can loop over a mixed list without special-casing.
+_ip_in_cidr() {
+    local ip="$1" entry="$2" ip_int net bits net_int mask
+    [[ -n "$entry" ]] || return 1
+    ip_int=$(_ip_to_int "$ip") || return 1
+    if [[ "$entry" != */* ]]; then
+        [[ "$ip" == "$entry" ]]
+        return
     fi
-fi
+    net="${entry%/*}"; bits="${entry#*/}"
+    [[ "$bits" =~ ^[0-9]+$ ]] || return 1
+    (( bits >= 0 && bits <= 32 )) || return 1
+    net_int=$(_ip_to_int "$net") || return 1
+    (( bits == 0 )) && return 0
+    mask=$(( 0xFFFFFFFF & (~((1 << (32 - bits)) - 1)) ))
+    (( (ip_int & mask) == (net_int & mask) ))
+}
+
+# IP whitelist — silently skip the alert when the connecting IP matches an
+# entry in TELEGRAM_ALERTS_IP_WHITELIST. Useful to suppress notifications
+# about your own logins from a known office / home / VPN range.
+for entry in "${TELEGRAM_ALERTS_IP_WHITELIST[@]:-}"; do
+    [[ -n "$entry" ]] || continue
+    _ip_in_cidr "$RHOST" "$entry" && exit 0
+done
+
+# Address blocks that are never sent to a geolocation service. Everything an
+# IP database cannot meaningfully place: all three RFC1918 private ranges,
+# loopback, link-local and carrier-grade NAT.
+_GEO_SKIP_DEFAULT=(
+    0.0.0.0/8         # "this network"
+    10.0.0.0/8        # RFC1918 private
+    100.64.0.0/10     # CGNAT (RFC6598)
+    127.0.0.0/8       # loopback
+    169.254.0.0/16    # link-local
+    172.16.0.0/12     # RFC1918 private
+    192.168.0.0/16    # RFC1918 private
+)
 
 # Resolve an IP to "City, Country" via a keyless HTTPS lookup service.
 #
@@ -132,14 +155,17 @@ fi
 _geo_lookup() {
     local ip="$1" url json city country
     [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || "$ip" == *:* ]] || return 0
-    # Private, loopback, link-local and CGNAT addresses: a public lookup can
-    # only return noise for them, and there's no reason to hand them to a
-    # third party at all.
+    # Never hand these to a lookup service: a public geo database can't say
+    # anything meaningful about them anyway. Operators whose internal network
+    # sits on some other range can extend this via TELEGRAM_ALERTS_GEOIP_SKIP.
+    local skip
+    for skip in "${_GEO_SKIP_DEFAULT[@]}" "${TELEGRAM_ALERTS_GEOIP_SKIP[@]:-}"; do
+        [[ -n "$skip" ]] || continue
+        _ip_in_cidr "$ip" "$skip" && return 0
+    done
+    # IPv6 by prefix — 128-bit CIDR math in bash isn't worth the lines.
     case "$ip" in
-        0.*|10.*|127.*|169.254.*|192.168.*)          return 0 ;;
-        172.1[6-9].*|172.2[0-9].*|172.3[01].*)       return 0 ;;
-        100.6[4-9].*|100.[7-9][0-9].*|100.1[01][0-9].*|100.12[0-7].*) return 0 ;;
-        ::1|fe80:*|fc*:*|fd*:*)                      return 0 ;;
+        ::1|fe80:*|fc*:*|fd*:*) return 0 ;;
     esac
     # Two providers, tried in order. Both are keyless and speak HTTPS; the
     # parsing is deliberately generic (no jq — this project ships with no
